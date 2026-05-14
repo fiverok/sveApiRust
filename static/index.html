@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Светогорский ЦБК | Мониторинг оборудования</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Дополнительные стили, которые не поместились в основной файл (опционально) */
+    </style>
+</head>
+<body class="pattern-bg">
+    <div class="monitor-container">
+        <div class="app-card">
+            <!-- Header -->
+            <div class="app-header">
+                <div class="header-content">
+                    <div class="logo-section">
+                        <div class="logo-icon">
+                            <i class="fas fa-tree"></i>
+                        </div>
+                        <div class="logo-text">
+                            <h1>НПАО «Светогорский ЦБК»</h1>
+                            <p>Система мониторинга оборудования и удалённого доступа</p>
+                        </div>
+                    </div>
+                    <div class="stats-badge">
+                        <div class="stat-item">
+                            <div class="stat-label">ВСЕГО УСТРОЙСТВ</div>
+                            <div class="stat-value" id="totalCount">0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">АКТИВНО</div>
+                            <div class="stat-value" id="onlineCount">0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">ОФФЛАЙН</div>
+                            <div class="stat-value" id="offlineCount">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search Panel -->
+            <div class="search-panel">
+                <div class="search-wrapper">
+                    <div class="search-input-wrapper">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="searchInput" class="search-input" placeholder="Поиск по имени компьютера, пользователю или ID...">
+                    </div>
+                    <select id="searchType" class="search-type-select">
+                        <option value="all">🔍 Все поля</option>
+                        <option value="hostname">💻 Имя ПК</option>
+                        <option value="username">👤 Пользователь</option>
+                        <option value="id">🆔 ID оборудования</option>
+                        <option value="ip">🌐 IP адрес</option>
+                    </select>
+                    <button class="refresh-btn" onclick="loadComputers()">
+                        <i class="fas fa-sync-alt"></i>
+                        Обновить
+                    </button>
+                </div>
+                <div class="search-info" id="searchInfo">
+                    <i class="fas fa-info-circle"></i>
+                    <span id="searchInfoText"></span>
+                </div>
+            </div>
+
+            <!-- Table -->
+            <div class="table-wrapper">
+                <table class="computers-table" id="computersTable">
+                    <thead>
+                        <tr>
+                            <th>№</th>
+                            <th>Наименование оборудования</th>
+                            <th>ID оборудования</th>
+                            <th>Пользователь</th>
+                            <th>IP адрес</th>
+                            <th>Статус</th>
+                            <th>Последний контакт</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <tr>
+                            <td colspan="7" class="empty-state">
+                                <i class="fas fa-spinner fa-pulse"></i>
+                                <p>Загрузка данных...</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            <div class="pagination-wrapper" id="paginationWrapper" style="display: none;">
+                <button class="page-btn" id="prevBtn" onclick="prevPage()">
+                    <i class="fas fa-chevron-left"></i>
+                    Назад
+                </button>
+                <span class="page-info" id="pageInfo">Страница 1</span>
+                <button class="page-btn" id="nextBtn" onclick="nextPage()">
+                    Вперед
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast-notification">
+        <i class="fas fa-plug"></i>
+        <span id="toastMessage">Подключение...</span>
+    </div>
+
+    <!-- Theme Toggle Button -->
+    <button class="theme-toggle" id="themeToggle" title="Переключить тему">
+        <i class="fas fa-moon"></i>
+    </button>
+
+    <script>
+        // API URL
+        const API_URL = window.location.origin;
+
+        // Управление темой
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            updateThemeIcon(savedTheme);
+        }
+
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+        }
+
+        function updateThemeIcon(theme) {
+            const icon = document.querySelector('#themeToggle i');
+            if (theme === 'dark') {
+                icon.className = 'fas fa-sun';
+            } else {
+                icon.className = 'fas fa-moon';
+            }
+        }
+
+        // Инициализация темы при загрузке
+        initTheme();
+
+        // Привязка обработчика переключения темы
+        document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+
+        // Глобальные переменные
+        let allComputers = [];
+        let currentPage = 1;
+        let itemsPerPage = 20;
+        let autoRefreshInterval = null;
+
+        // Универсальная функция копирования в буфер обмена (работает везде)
+        function copyToClipboard(text, computerName) {
+            // Способ 1: Современный Clipboard API
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(() => {
+                    showToastCopy(`✅ Имя "${computerName}" скопировано`);
+                }).catch(() => {
+                    // Если Clipboard API не сработал, пробуем fallback
+                    fallbackCopyToClipboard(text, computerName);
+                });
+            } else {
+                // Способ 2: Fallback для старых браузеров или HTTP
+                fallbackCopyToClipboard(text, computerName);
+            }
+        }
+
+        // Fallback метод копирования (создание временного textarea)
+        function fallbackCopyToClipboard(text, computerName) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.top = '-9999px';
+            textarea.style.left = '-9999px';
+            document.body.appendChild(textarea);
+            
+            textarea.select();
+            textarea.setSelectionRange(0, textarea.value.length);
+            
+            let success = false;
+            try {
+                success = document.execCommand('copy');
+            } catch (err) {
+                console.error('Fallback copy error:', err);
+            }
+            
+            document.body.removeChild(textarea);
+            
+            if (success) {
+                showToastCopy(`✅ Имя "${computerName}" скопировано`);
+            } else {
+                showToastCopy(`❌ Не удалось скопировать. Выделите имя вручную: ${computerName}`, true);
+            }
+        }
+
+        // Уведомление для копирования
+        function showToastCopy(message, isError = false) {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toastMessage');
+            const icon = toast.querySelector('i');
+
+            toastMessage.textContent = message;
+
+            if (isError) {
+                icon.className = 'fas fa-exclamation-triangle';
+                toast.style.background = 'var(--status-offline-bg)';
+                toast.style.borderLeftColor = 'var(--accent-highlight)';
+            } else {
+                icon.className = 'fas fa-copy';
+                toast.style.background = 'var(--accent-primary)';
+                toast.style.borderLeftColor = 'var(--accent-highlight)';
+            }
+
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2000);
+        }
+
+        // Функция показа уведомления
+        function showToast(message, isError = false) {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toastMessage');
+            const icon = toast.querySelector('i');
+
+            toastMessage.textContent = message;
+
+            if (isError) {
+                icon.className = 'fas fa-exclamation-triangle';
+                toast.style.background = 'var(--status-offline-bg)';
+                toast.style.borderLeftColor = 'var(--accent-highlight)';
+            } else {
+                icon.className = 'fas fa-plug';
+                toast.style.background = 'var(--accent-primary)';
+                toast.style.borderLeftColor = 'var(--accent-highlight)';
+            }
+
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        // Подключение через RustDesk
+        function connectRustDesk(computerId, computerName) {
+            if (!computerId) {
+                showToast('ID оборудования не указан', true);
+                return;
+            }
+
+            showToast(`🖥️ Подключение к ${computerName || computerId}...`);
+            const rustdeskUrl = `rustdesk://connection/new/${computerId}`;
+
+            try {
+                window.location.href = rustdeskUrl;
+                setTimeout(() => {
+                    const altUrl = `rustdesk://${computerId}`;
+                    window.location.href = altUrl;
+                }, 500);
+            } catch (error) {
+                console.error('RustDesk error:', error);
+                showToast('❌ Не удалось запустить RustDesk. Убедитесь, что он установлен', true);
+            }
+        }
+
+        // Форматирование даты
+        function formatDate(dateString) {
+            if (!dateString) return 'Никогда';
+            const date = new Date(dateString);
+            const now = new Date();
+            const diffSeconds = Math.floor((now - date) / 1000);
+
+            if (diffSeconds < 60) return `${diffSeconds} сек назад`;
+            if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)} мин назад`;
+            return date.toLocaleString('ru-RU', {
+                day: '2-digit',
+                month: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // Проверка онлайн статуса
+        function isOnline(lastSeen) {
+            if (!lastSeen) return false;
+            const diffSeconds = (new Date() - new Date(lastSeen)) / 1000;
+            return diffSeconds < 30;
+        }
+
+        // Фильтрация
+        function filterComputers(computers, searchTerm, searchType) {
+            if (!searchTerm) return computers;
+            const term = searchTerm.toLowerCase();
+            return computers.filter(computer => {
+                switch(searchType) {
+                    case 'hostname': return (computer.hostname || '').toLowerCase().includes(term);
+                    case 'username': return (computer.username || '').toLowerCase().includes(term);
+                    case 'id': return (computer.id || '').toLowerCase().includes(term);
+                    case 'ip': return (computer.ip || '').toLowerCase().includes(term);
+                    default: return (computer.hostname || '').toLowerCase().includes(term) ||
+                                   (computer.username || '').toLowerCase().includes(term) ||
+                                   (computer.id || '').toLowerCase().includes(term) ||
+                                   (computer.ip || '').toLowerCase().includes(term);
+                }
+            });
+        }
+
+        // Обновление отображения
+        function updateDisplay() {
+            const searchTerm = document.getElementById('searchInput').value;
+            const searchType = document.getElementById('searchType').value;
+            let filtered = filterComputers(allComputers, searchTerm, searchType);
+
+            const searchInfoText = document.getElementById('searchInfoText');
+            if (searchTerm) {
+                searchInfoText.innerHTML = `Найдено: ${filtered.length} из ${allComputers.length} устройств`;
+            } else {
+                searchInfoText.innerHTML = `Всего оборудования в системе: ${allComputers.length}`;
+            }
+
+            const onlineCount = allComputers.filter(c => isOnline(c.last_online)).length;
+            const offlineCount = allComputers.length - onlineCount;
+            document.getElementById('onlineCount').textContent = onlineCount;
+            document.getElementById('offlineCount').textContent = offlineCount;
+            document.getElementById('totalCount').textContent = allComputers.length;
+
+            const totalPages = Math.ceil(filtered.length / itemsPerPage);
+            const startIndex = (currentPage - 1) * itemsPerPage;
+            const endIndex = Math.min(startIndex + itemsPerPage, filtered.length);
+            const paginatedData = filtered.slice(startIndex, endIndex);
+
+            const paginationWrapper = document.getElementById('paginationWrapper');
+            if (totalPages > 1) {
+                paginationWrapper.style.display = 'flex';
+                document.getElementById('pageInfo').innerHTML = `Страница ${currentPage} из ${totalPages}`;
+                document.getElementById('prevBtn').disabled = currentPage === 1;
+                document.getElementById('nextBtn').disabled = currentPage === totalPages;
+            } else {
+                paginationWrapper.style.display = 'none';
+            }
+
+            const tbody = document.getElementById('tableBody');
+            if (paginatedData.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="empty-state"><i class="fas fa-search"></i><p>Оборудование не найдено</p></td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = paginatedData.map((computer, idx) => {
+                const online = isOnline(computer.last_online);
+                const computerName = escapeHtml(computer.hostname || computer.computer_name || 'Unknown');
+                const computerId = escapeHtml(computer.id);
+                return `
+                    <tr>
+                        <td><strong>${startIndex + idx + 1}</strong></td>
+                        <td>
+                            <div class="computer-name" onclick="copyToClipboard('${computerName.replace(/'/g, "\\'")}', '${computerName.replace(/'/g, "\\'")}')" title="Нажмите чтобы скопировать имя">
+                                <i class="fas fa-laptop-code"></i>
+                                ${computerName}
+                            </div>
+                        </td>
+                        <td>
+                            <div class="computer-id" onclick="connectRustDesk('${computerId}', '${computerName.replace(/'/g, "\\'")}')" title="Нажмите для подключения через RustDesk">
+                                ${computerId} <i class="fas fa-external-link-alt"></i>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="username-badge">
+                                <i class="fas fa-user"></i>
+                                ${escapeHtml(computer.username || 'Unknown')}
+                            </div>
+                        </td>
+                        <td><i class="fas fa-network-wired"></i> ${escapeHtml(computer.ip || 'N/A')}</td>
+                        <td>
+                            <div class="${online ? 'status-online' : 'status-offline'}">
+                                <i class="fas fa-circle"></i>
+                                ${online ? 'АКТИВНО' : 'ОФФЛАЙН'}
+                            </div>
+                        </td>
+                        <td><i class="far fa-clock"></i> ${formatDate(computer.last_online)}</span>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        async function loadComputers() {
+            try {
+                const response = await fetch(`${API_URL}/api/computers`);
+                if (!response.ok) throw new Error('Ошибка загрузки');
+                allComputers = await response.json();
+                currentPage = 1;
+                updateDisplay();
+            } catch (error) {
+                console.error('Ошибка загрузки:', error);
+                showToast('❌ Ошибка подключения к серверу', true);
+                document.getElementById('tableBody').innerHTML = `<tr><td colspan="7" class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>Ошибка подключения к серверу</p></td></tr>`;
+            }
+        }
+
+        function prevPage() { if (currentPage > 1) { currentPage--; updateDisplay(); } }
+        function nextPage() {
+            const searchTerm = document.getElementById('searchInput').value;
+            const searchType = document.getElementById('searchType').value;
+            const filtered = filterComputers(allComputers, searchTerm, searchType);
+            if (currentPage < Math.ceil(filtered.length / itemsPerPage)) { currentPage++; updateDisplay(); }
+        }
+
+        document.getElementById('searchInput').addEventListener('input', () => { currentPage = 1; updateDisplay(); });
+        document.getElementById('searchType').addEventListener('change', () => { currentPage = 1; updateDisplay(); });
+
+        if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+        autoRefreshInterval = setInterval(loadComputers, 15000);
+
+        loadComputers();
+    </script>
+</body>
+</html>

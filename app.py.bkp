@@ -1,0 +1,180 @@
+from flask import Flask, request, jsonify, send_from_directory
+from datetime import datetime
+import json
+import os
+
+app = Flask(__name__, static_folder='static', static_url_path='')
+DATA_FILE = '/data/computers.json'
+HEARTBEAT_TIMEOUT = 30
+
+def load_data():
+    """Загружает данные из JSON файла"""
+    if not os.path.exists(DATA_FILE):
+        return []
+    try:
+        with open(DATA_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Ошибка загрузки: {e}")
+        return []
+
+def save_data(data):
+    """Сохраняет данные в JSON файл"""
+    try:
+        with open(DATA_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"Ошибка сохранения: {e}")
+
+@app.route('/')
+def index():
+    """Отдает HTML файл"""
+    return send_from_directory('static', 'index.html')
+
+@app.route('/api/computers', methods=['GET'])
+def get_computers():
+    """Возвращает список всех компьютеров"""
+    computers = load_data()
+    return jsonify(computers)
+
+@app.route('/api/sysinfo', methods=['POST'])
+def register_sysinfo():
+    """Принимает системную информацию от клиента RustDesk"""
+    try:
+        data = request.get_json()
+        print(f"📥 SysInfo от {request.remote_addr}: ID={data.get('id', 'unknown')}")
+        
+        if not data or 'id' not in data:
+            return jsonify({'error': 'Missing id field'}), 400
+        
+        computers = load_data()
+        computer_id = str(data['id'])
+        
+        # Ищем существующий компьютер
+        found = False
+        for comp in computers:
+            if str(comp.get('id')) == computer_id:
+                comp.update({
+                    'hostname': data.get('hostname', comp.get('hostname', 'Unknown')),
+                    'username': data.get('username', comp.get('username', 'Unknown')),
+                    'os': data.get('os', comp.get('os', 'Unknown')),
+                    'cpu': data.get('cpu', comp.get('cpu', 'Unknown')),
+                    'memory_total': str(data.get('memory', comp.get('memory_total', '0'))),
+                    'memory_used': str(data.get('memory_used', comp.get('memory_used', '0'))),
+                    'uuid': data.get('uuid', comp.get('uuid', '')),
+                    'version': data.get('version', comp.get('version', '')),
+                    'ip': request.remote_addr,
+                    'last_update': datetime.now().isoformat()
+                })
+                found = True
+                print(f"🔄 Обновлен sysinfo: {computer_id}")
+                break
+        
+        if not found:
+            computers.append({
+                'id': computer_id,
+                'hostname': data.get('hostname', 'Unknown'),
+                'username': data.get('username', 'Unknown'),
+                'os': data.get('os', 'Unknown'),
+                'cpu': data.get('cpu', 'Unknown'),
+                'memory_total': str(data.get('memory', '0')),
+                'memory_used': str(data.get('memory_used', '0')),
+                'uuid': data.get('uuid', ''),
+                'version': data.get('version', ''),
+                'ip': request.remote_addr,
+                'first_seen': datetime.now().isoformat(),
+                'last_update': datetime.now().isoformat(),
+                'last_online': None
+            })
+            print(f"✅ Новый компьютер (sysinfo): {computer_id}")
+        
+        save_data(computers)
+        return jsonify({'status': 'success', 'message': 'SysInfo saved'}), 200
+        
+    except Exception as e:
+        print(f"❌ Ошибка sysinfo: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/heartbeat', methods=['POST'])
+def heartbeat():
+    """Обновляет статус онлайн, создает запись если её нет"""
+    try:
+        data = request.get_json()
+        computer_id = str(data.get('id', 'unknown'))
+        print(f"💓 Heartbeat от {request.remote_addr}: ID={computer_id}")
+        
+        if not data or 'id' not in data:
+            return jsonify({'error': 'Missing id field'}), 400
+        
+        computers = load_data()
+        now = datetime.now()
+        
+        found = False
+        for comp in computers:
+            if str(comp.get('id')) == computer_id:
+                found = True
+                comp['last_online'] = now.isoformat()
+                comp['last_online_ip'] = request.remote_addr
+                comp['ver'] = data.get('ver', 0)
+                comp['ip'] = request.remote_addr
+                if not comp.get('hostname') or comp.get('hostname') == 'Unknown':
+                    comp['hostname'] = f"PC-{computer_id[-6:]}"
+                save_data(computers)
+                print(f"✅ Heartbeat обновлен: {computer_id}")
+                break
+        
+        if not found:
+            new_computer = {
+                'id': computer_id,
+                'hostname': f"PC-{computer_id[-6:]}",
+                'username': 'Unknown',
+                'os': 'Unknown',
+                'cpu': 'Unknown',
+                'memory_total': '0',
+                'memory_used': '0',
+                'uuid': data.get('uuid', ''),
+                'version': str(data.get('ver', 0)),
+                'ip': request.remote_addr,
+                'first_seen': now.isoformat(),
+                'last_update': now.isoformat(),
+                'last_online': now.isoformat(),
+                'last_online_ip': request.remote_addr,
+                'ver': data.get('ver', 0)
+            }
+            computers.append(new_computer)
+            save_data(computers)
+            print(f"🎯 СОЗДАН НОВЫЙ КОМПЬЮТЕР из heartbeat: {computer_id}")
+        
+        return jsonify({'status': 'success', 'message': 'Heartbeat processed'}), 200
+        
+    except Exception as e:
+        print(f"❌ Ошибка heartbeat: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+if __name__ == '__main__':
+    # Создаем директории если их нет
+    os.makedirs('/data', exist_ok=True)
+    os.makedirs('static', exist_ok=True)
+    
+    if not os.path.exists(DATA_FILE):
+        save_data([])
+    
+    print("=" * 70)
+    print("🚀 RustDesk Monitor Server v3.0")
+    print("=" * 70)
+    print(f"📁 Data file: {DATA_FILE}")
+    print(f"📁 Static files: static/")
+    print(f"🌐 Web UI: http://0.0.0.0:21114")
+    print(f"📡 API endpoints:")
+    print(f"   POST /api/sysinfo - системная информация")
+    print(f"   POST /api/heartbeat - heartbeat (auto-create)")
+    print(f"   GET  /api/computers - список компьютеров")
+    print("=" * 70)
+    print("💡 HTML файл должен быть в static/index.html")
+    print("=" * 70)
+    
+    app.run(host='0.0.0.0', port=21114, debug=False, threaded=True)

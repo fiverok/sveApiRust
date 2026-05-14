@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  rustdesk-monitor:
+    build: .
+    container_name: rustdesk-monitor
+    restart: always
+    ports:
+      - "21114:21114"
+    volumes:
+      - ./data:/data
+      - ./static:/app/static  # Для разработки (опционально)
+    environment:
+      - TZ=Europe/Moscow
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
