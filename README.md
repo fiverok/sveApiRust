@@ -27,3 +27,24 @@
 - URL: `http://your-server:21114`
 - Логин: `admin`
 - Пароль: `admin`
+
+# RustDesk Monitor v5.0
+
+Система мониторинга компьютеров для RustDesk с SQLite и авторизацией.
+
+## Возможности
+
+- ✅ SQLite база данных (надежное хранение)
+- ✅ Авторизация с ролями (admin/user)
+- ✅ Панель управления пользователями
+- ✅ Удаление устройств из списка
+- ✅ Лог аудита действий
+- ✅ Корпоративный дизайн
+- ✅ Docker контейнеризация
+
+## Быстрый старт
+
+```bash
+git clone https://github.com/fiverok/sveApiRust.git
+cd sveApiRust
+docker-compose up -d

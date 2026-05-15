@@ -38,3 +38,5 @@
 2026-05-15 15:43:54 - ERROR - Error updating heartbeat: generator didn't stop after throw()
 2026-05-15 15:43:55 - ERROR - Failed to add audit log after 3 attempts: generator didn't stop after throw()
 2026-05-15 15:54:19 - ERROR - Error sysinfo: 400 Bad Request: The browser (or proxy) sent a request that this server could not understand.
+2026-05-15 16:28:20 - ERROR - Query error: Error binding parameter 6: type 'list' is not supported
+2026-05-15 16:28:20 - ERROR - Error sysinfo: Error binding parameter 6: type 'list' is not supported
