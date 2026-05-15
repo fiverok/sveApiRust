@@ -256,6 +256,100 @@ body {
     color: #333;
 }
 
+/* Компоненты таблицы */
+.computer-name {
+    font-weight: 700;
+    color: #004D43;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Helios', 'Inter', sans-serif;
+    cursor: pointer;
+}
+
+.computer-name i {
+    color: #FFC700;
+    font-size: 1rem;
+    pointer-events: none;
+}
+
+.computer-id {
+    font-family: 'Courier New', monospace;
+    font-size: 0.75rem;
+    background: #F0F0F0;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #004D43;
+}
+
+.computer-id:hover {
+    background: #FFC700;
+    color: #004D43;
+}
+
+.computer-id i {
+    font-size: 0.7rem;
+}
+
+.username-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #FFF8E1;
+    padding: 4px 10px;
+    border-radius: 4px;
+    color: #FFC700;
+    font-weight: 500;
+    font-size: 0.75rem;
+    font-family: 'Arial', sans-serif;
+}
+
+.username-badge i {
+    color: #FFC700;
+}
+
+/* Статусы */
+.status-online {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #E8F5E9;
+    color: #004D43;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.7rem;
+    font-family: 'Helios', 'Inter', sans-serif;
+}
+
+.status-online i {
+    color: #4CAF50;
+    font-size: 0.6rem;
+}
+
+.status-offline {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #FFEBEE;
+    color: #c62828;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.7rem;
+    font-family: 'Helios', 'Inter', sans-serif;
+}
+
+.status-offline i {
+    color: #c62828;
+    font-size: 0.6rem;
+}
+
 /* Кнопки */
 .btn {
     padding: 8px 16px;

@@ -142,6 +142,72 @@
             }
         }
 
+        // Функция копирования в буфер обмена
+        function copyToClipboard(text, computerName) {
+            // Используем современный Clipboard API
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(() => {
+                    showToastCopy(`✅ Имя "${computerName}" скопировано`);
+                }).catch(() => {
+                    // Fallback для старых браузеров
+                    fallbackCopyToClipboard(text, computerName);
+                });
+            } else {
+                fallbackCopyToClipboard(text, computerName);
+            }
+        }
+
+        // Fallback метод копирования
+        function fallbackCopyToClipboard(text, computerName) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.top = '-9999px';
+            textarea.style.left = '-9999px';
+            document.body.appendChild(textarea);
+            textarea.select();
+            textarea.setSelectionRange(0, textarea.value.length);
+            
+            let success = false;
+            try {
+                success = document.execCommand('copy');
+            } catch (err) {
+                console.error('Fallback copy error:', err);
+            }
+            
+            document.body.removeChild(textarea);
+            
+            if (success) {
+                showToastCopy(`✅ Имя "${computerName}" скопировано`);
+            } else {
+                showToastCopy(`❌ Не удалось скопировать`, true);
+            }
+        }
+
+        // Уведомление для копирования
+        function showToastCopy(message, isError = false) {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toastMessage');
+            const icon = toast.querySelector('i');
+
+            toastMessage.textContent = message;
+
+            if (isError) {
+                icon.className = 'fas fa-exclamation-triangle';
+                toast.style.background = '#c62828';
+                toast.style.borderLeftColor = '#FFC700';
+            } else {
+                icon.className = 'fas fa-copy';
+                toast.style.background = '#004D43';
+                toast.style.borderLeftColor = '#FFC700';
+            }
+
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2000);
+        }
+
         function showToast(message, isError = false) {
             const toast = document.getElementById('toast');
             const toastMessage = document.getElementById('toastMessage');
@@ -248,18 +314,29 @@
             tbody.innerHTML = paginatedData.map((computer, idx) => {
                 const online = isOnline(computer.last_online);
                 const computerName = escapeHtml(computer.hostname || 'Unknown');
+                const computerId = escapeHtml(computer.id);
                 return `
-                    <tr onclick="connectRustDesk('${escapeHtml(computer.id)}', '${computerName}')">
+                    <tr>
                         <td><strong>${startIndex + idx + 1}</strong></td>
-                        <td><div class="computer-name"><i class="fas fa-laptop-code"></i> ${computerName}</div></td>
-                        <td><span class="computer-id">${escapeHtml(computer.id)} <i class="fas fa-external-link-alt"></i></span></td>
-                        <td><i class="fas fa-user"></i> ${escapeHtml(computer.username || 'Unknown')}</td>
-                        <td><i class="fas fa-network-wired"></i> ${escapeHtml(computer.ip || 'N/A')}</td>
-                        <td><div class="${online ? 'status-online' : 'status-offline'}">
-                            <i class="fas fa-circle"></i> ${online ? 'АКТИВНО' : 'ОФФЛАЙН'}
-                        </div></td>
-                        <td><i class="far fa-clock"></i> ${formatDate(computer.last_online)}</span></td>
-                    </tr>
+                        <td style="cursor: pointer;" onclick="event.stopPropagation(); copyToClipboard('${computerName.replace(/'/g, "\\'")}', '${computerName.replace(/'/g, "\\'")}')" title="Нажмите чтобы скопировать имя">
+                            <div class="computer-name">
+                                <i class="fas fa-laptop-code"></i> ${computerName}
+                            </div>
+                         </span>
+                        <td>
+                            <span class="computer-id" onclick="event.stopPropagation(); connectRustDesk('${computerId}', '${computerName.replace(/'/g, "\\'")}')" title="Нажмите для подключения через RustDesk">
+                                ${computerId} <i class="fas fa-external-link-alt"></i>
+                            </span>
+                         </span>
+                        <td><i class="fas fa-user"></i> ${escapeHtml(computer.username || 'Unknown')}</span>
+                        <td><i class="fas fa-network-wired"></i> ${escapeHtml(computer.ip || 'N/A')}</span>
+                        <td>
+                            <div class="${online ? 'status-online' : 'status-offline'}">
+                                <i class="fas fa-circle"></i> ${online ? 'АКТИВНО' : 'ОФФЛАЙН'}
+                            </div>
+                         </span>
+                        <td><i class="far fa-clock"></i> ${formatDate(computer.last_online)}</span>
+                     </span>
                 `;
             }).join('');
         }
@@ -281,7 +358,7 @@
             } catch (error) {
                 console.error('Ошибка загрузки:', error);
                 showToast('❌ Ошибка подключения к серверу', true);
-                document.getElementById('tableBody').innerHTML = `<tr><td colspan="7" class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>Ошибка подключения к серверу</p></td></tr>`;
+                document.getElementById('tableBody').innerHTML = `<tr><td colspan="7" class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>Ошибка подключения к серверу</p></span></tr>`;
             }
         }
 
