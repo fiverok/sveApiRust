@@ -9,7 +9,7 @@ services:
       - "21114:21114"
     volumes:
       - ./data:/data
-      - ./static:/app/static  # Для разработки (опционально)
+      - ./static:/app/static
     environment:
       - TZ=Europe/Moscow
     logging:
