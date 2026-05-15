@@ -10,6 +10,7 @@ app = Flask(__name__, static_folder='static', static_url_path='')
 # ========== НАСТРОЙКИ ==========
 DATA_FILE = '/data/computers.json'
 API_VERSION = "1.0.0"
+SERVER_VERSION = "2025.1.0"
 
 # ========== НАСТРОЙКА ЛОГИРОВАНИЯ ==========
 log_format = '%(asctime)s - %(levelname)s - %(message)s'
@@ -25,7 +26,7 @@ sysinfo_logger.addHandler(sysinfo_handler)
 # Логгер для heartbeat
 heartbeat_logger = logging.getLogger('heartbeat')
 heartbeat_logger.setLevel(logging.INFO)
-heartbeat_handler = RotatingFileHandler('/data/heartbeat.log', maxBytes=10485760, backupCount=10)
+heartbeat_handler = RotatingFileHandler('/data/heartbeat.log', maxBytes=10485760, backupCount=5)
 heartbeat_handler.setFormatter(logging.Formatter(log_format, date_format))
 heartbeat_logger.addHandler(heartbeat_handler)
 
@@ -68,73 +69,162 @@ def save_data(data):
             json.dump(data, f, indent=2, ensure_ascii=False)
     except Exception as e:
         error_logger.error(f"Error saving data: {e}")
+        return False
+    return True
 
-def update_computer(computer_id, data):
-    """Обновляет или создает запись о компьютере"""
+def get_computer_by_uuid(uuid):
+    """Получает компьютер по UUID"""
+    if not uuid:
+        return None
     computers = load_data()
-    
-    # Ищем существующий компьютер по ID
-    existing_index = None
-    for i, comp in enumerate(computers):
-        if comp.get('id') == computer_id:
-            existing_index = i
-            break
-    
-    now = datetime.now().isoformat()
-    
-    new_computer = {
-        'id': computer_id,
-        'hostname': data.get('hostname', 'Unknown'),
-        'username': data.get('username', 'Unknown'),
-        'os': data.get('os', 'Unknown'),
-        'cpu': data.get('cpu', 'Unknown'),
-        'memory_total': data.get('memory_total', '0'),
-        'memory_used': data.get('memory_used', '0'),
-        'uuid': data.get('uuid', ''),
-        'version': data.get('version', ''),
-        'ip': data.get('ip', ''),
-        'last_update': now,
-        'last_online': None
-    }
-    
-    if existing_index is not None:
-        # Сохраняем last_online из существующей записи
-        new_computer['last_online'] = computers[existing_index].get('last_online')
-        computers[existing_index] = new_computer
-        save_data(computers)
-        return 'UPDATED'
-    else:
-        computers.append(new_computer)
-        save_data(computers)
-        return 'CREATED'
-
-def update_heartbeat(computer_id, ip, ver):
-    """Обновляет heartbeat (только если компьютер существует)"""
-    computers = load_data()
-    
     for comp in computers:
-        if comp.get('id') == computer_id:
-            comp['last_online'] = datetime.now().isoformat()
-            comp['last_online_ip'] = ip
-            comp['ver'] = ver
-            comp['ip'] = ip
-            save_data(computers)
-            return True
-    return False
+        if comp.get('uuid') == uuid:
+            return comp
+    return None
 
 def get_computer_by_id(computer_id):
-    """Получает компьютер по ID"""
+    """Получает компьютер по ID (для обратной совместимости)"""
+    if not computer_id:
+        return None
     computers = load_data()
     for comp in computers:
         if comp.get('id') == computer_id:
             return comp
     return None
 
+def update_computer_with_id(uuid, computer_id):
+    """Дополняет информацию о компьютере: добавляет ID по UUID"""
+    computers = load_data()
+    for comp in computers:
+        if comp.get('uuid') == uuid:
+            # Если ID еще не установлен или отличается, обновляем
+            old_id = comp.get('id')
+            if not comp.get('id') or comp.get('id') != computer_id:
+                comp['id'] = computer_id
+                save_data(computers)
+                return True, old_id
+            return False, old_id
+    return False, None
+
+def update_sysinfo(data, client_ip):
+    """
+    Обновляет или создает запись с системной информацией
+    Критерий уникальности - UUID
+    """
+    computers = load_data()
+    
+    uuid = data.get('uuid')
+    computer_id = data.get('id')
+    
+    if not uuid:
+        sysinfo_logger.warning(f"SYSINFO | IP={client_ip} | Error=Missing uuid field")
+        return None, 'NO_UUID'
+    
+    # Ищем существующий компьютер по UUID
+    existing_index = None
+    for i, comp in enumerate(computers):
+        if comp.get('uuid') == uuid:
+            existing_index = i
+            break
+    
+    now = datetime.now().isoformat()
+    current_timestamp = int(datetime.now().timestamp())
+    
+    new_computer = {
+        'uuid': uuid,
+        'id': computer_id if computer_id else '',
+        'hostname': data.get('hostname', 'Unknown'),
+        'username': data.get('username', 'Unknown'),
+        'os': data.get('os', 'Unknown'),
+        'cpu': data.get('cpu', 'Unknown'),
+        'memory': data.get('memory', '0'),
+        'version': data.get('version', ''),
+        'ip': client_ip,
+        'last_update': now,
+        'last_update_timestamp': current_timestamp,
+        'last_online': None,
+        'last_online_timestamp': None,
+        'modified_at': data.get('modified_at', current_timestamp)
+    }
+    
+    if existing_index is not None:
+        # Сохраняем last_online из существующей записи
+        new_computer['last_online'] = computers[existing_index].get('last_online')
+        new_computer['last_online_timestamp'] = computers[existing_index].get('last_online_timestamp')
+        # Если в новом запросе нет ID, но есть в старом - сохраняем старый
+        if not new_computer['id'] and computers[existing_index].get('id'):
+            new_computer['id'] = computers[existing_index].get('id')
+        computers[existing_index] = new_computer
+        save_data(computers)
+        return new_computer, 'UPDATED'
+    else:
+        computers.append(new_computer)
+        save_data(computers)
+        return new_computer, 'CREATED'
+
+def update_heartbeat(uuid, client_ip, conns=None, modified_at=None, computer_id=None):
+    """Обновляет heartbeat по UUID"""
+    computers = load_data()
+    now = datetime.now()
+    now_iso = now.isoformat()
+    now_timestamp = int(now.timestamp())
+    
+    for comp in computers:
+        if comp.get('uuid') == uuid:
+            comp['last_online'] = now_iso
+            comp['last_online_timestamp'] = now_timestamp
+            comp['last_online_ip'] = client_ip
+            comp['ip'] = client_ip
+            if conns:
+                comp['conns'] = conns
+            if modified_at:
+                comp['modified_at'] = modified_at
+            # Если в запросе есть ID, но в записи его нет - обновляем
+            if computer_id and not comp.get('id'):
+                comp['id'] = computer_id
+            save_data(computers)
+            return True, now_timestamp
+    return False, None
+
 # ========== API ЭНДПОИНТЫ ==========
+
 @app.route('/')
 def index():
-    """Отдает HTML файл"""
-    return send_from_directory('static', 'index.html')
+    """Отдает HTML файл веб-интерфейса"""
+    try:
+        return send_from_directory('static', 'index.html')
+    except Exception as e:
+        error_logger.error(f"Error serving index.html: {e}")
+        return jsonify({
+            'name': 'RustDesk Monitor',
+            'version': SERVER_VERSION,
+            'api_version': API_VERSION,
+            'description': 'Система мониторинга оборудования RustDesk',
+            'endpoints': {
+                'sysinfo': '/api/sysinfo',
+                'sysinfo_ver': '/api/sysinfo_ver',
+                'heartbeat': '/api/heartbeat',
+                'computers': '/api/computers',
+                'version': '/api/version'
+            }
+        })
+
+@app.route('/api/info', methods=['GET'])
+def api_info():
+    """Возвращает базовую информацию API"""
+    return jsonify({
+        'name': 'RustDesk Monitor',
+        'version': SERVER_VERSION,
+        'api_version': API_VERSION,
+        'description': 'Система мониторинга оборудования RustDesk',
+        'endpoints': {
+            'sysinfo': '/api/sysinfo',
+            'sysinfo_ver': '/api/sysinfo_ver',
+            'heartbeat': '/api/heartbeat',
+            'computers': '/api/computers',
+            'version': '/api/version'
+        }
+    })
 
 @app.route('/api/computers', methods=['GET'])
 def get_computers():
@@ -146,9 +236,8 @@ def get_computers():
 def register_sysinfo():
     """
     Принимает системную информацию от клиента RustDesk
-    Создает или обновляет запись о компьютере
+    Критерий уникальности - UUID
     """
-    start_time = datetime.now()
     client_ip = request.remote_addr
     
     try:
@@ -161,54 +250,52 @@ def register_sysinfo():
                 except:
                     pass
         
-        if not data or 'id' not in data:
-            sysinfo_logger.warning(f"SYSINFO | IP={client_ip} | Error=Missing id field | Status=bad_request")
-            return jsonify({'error': 'Missing id field'}), 400
+        if not data:
+            sysinfo_logger.warning(f"SYSINFO | IP={client_ip} | Error=Empty request")
+            return "MISSING_UUID", 400
         
-        computer_id = str(data['id'])
+        if 'uuid' not in data or not data['uuid']:
+            sysinfo_logger.warning(f"SYSINFO | IP={client_ip} | Error=Missing uuid field")
+            return "MISSING_UUID", 400
         
-        # Формируем данные для сохранения
-        computer_data = {
-            'hostname': data.get('hostname', 'Unknown'),
-            'username': data.get('username', 'Unknown'),
-            'os': data.get('os', 'Unknown'),
-            'cpu': data.get('cpu', 'Unknown'),
-            'memory_total': data.get('memory', data.get('memory_total', '0')),
-            'memory_used': data.get('memory_used', '0'),
-            'uuid': data.get('uuid', ''),
-            'version': data.get('version', ''),
-            'ip': client_ip
-        }
+        computer, result = update_sysinfo(data, client_ip)
         
-        result = update_computer(computer_id, computer_data)
+        if not computer:
+            return "MISSING_UUID", 400
         
-        # Детальное логирование sysinfo
         sysinfo_logger.info(
-            f"SYSINFO | ID={computer_id} | Hostname={computer_data['hostname']} | "
-            f"User={computer_data['username']} | OS={computer_data['os']} | "
-            f"CPU={computer_data['cpu']} | Memory={computer_data['memory_total']} | "
-            f"Version={computer_data['version']} | UUID={computer_data['uuid']} | "
-            f"IP={client_ip} | Action={result} | Time={datetime.now().isoformat()}"
+            f"SYSINFO | UUID={computer['uuid']} | ID={computer.get('id', 'N/A')} | "
+            f"Hostname={computer['hostname']} | User={computer['username']} | "
+            f"OS={computer['os']} | CPU={computer['cpu']} | "
+            f"Memory={computer['memory']} | Version={computer['version']} | "
+            f"IP={client_ip} | Action={result}"
         )
         
         return "SYSINFO_UPDATED", 200
         
     except json.JSONDecodeError as e:
         sysinfo_logger.error(f"SYSINFO | IP={client_ip} | Error=Invalid JSON: {str(e)}")
-        return jsonify({'error': 'Invalid JSON'}), 400
+        return "MISSING_UUID", 400
     except Exception as e:
         sysinfo_logger.error(f"SYSINFO | IP={client_ip} | Error={str(e)}")
         error_logger.error(f"Error sysinfo: {e}")
-        return jsonify({'error': str(e)}), 500
+        return "MISSING_UUID", 500
+
+@app.route('/api/sysinfo_ver', methods=['POST'])
+def sysinfo_ver():
+    """Возвращает версию сервера при инициализации клиента"""
+    client_ip = request.remote_addr
+    sysinfo_logger.info(f"SYSINFO_VER | IP={client_ip} | Version={SERVER_VERSION}")
+    return SERVER_VERSION, 200
 
 @app.route('/api/heartbeat', methods=['POST'])
 def heartbeat():
     """
-    Обновляет heartbeat только для существующих устройств.
-    Если устройство НЕ найдено - возвращает 401 (Unauthorized).
-    Клиент интерпретирует 401 как сигнал для повторной отправки sysinfo.
+    Поддержание онлайн-статуса
+    Если устройство не найдено по UUID, но есть ID - ищем по ID
+    Если найдено по ID, но нет UUID - дополняем информацию
+    Если не найдено - возвращаем 401
     """
-    start_time = datetime.now()
     client_ip = request.remote_addr
     
     try:
@@ -221,36 +308,71 @@ def heartbeat():
                 except:
                     pass
         
-        if not data or 'id' not in data:
-            heartbeat_logger.warning(f"HEARTBEAT | IP={client_ip} | Error=Missing id field | Status=bad_request")
+        if not data:
+            heartbeat_logger.warning(f"HEARTBEAT | IP={client_ip} | Error=Empty request")
             return jsonify({}), 400
         
-        computer_id = str(data['id'])
-        ver = data.get('ver', 0)
+        uuid = data.get('uuid')
+        computer_id = str(data.get('id')) if data.get('id') else None
+        conns = data.get('conns')
+        modified_at = data.get('modified_at')
         
-        # Проверяем, существует ли устройство
-        existing = get_computer_by_id(computer_id)
+        # Проверяем, есть ли хоть какой-то идентификатор
+        if not uuid and not computer_id:
+            heartbeat_logger.warning(f"HEARTBEAT | IP={client_ip} | Error=Missing uuid and id")
+            return jsonify({}), 400
         
+        # Ищем устройство (сначала по UUID, потом по ID)
+        existing = None
+        search_method = None
+        
+        if uuid:
+            existing = get_computer_by_uuid(uuid)
+            if existing:
+                search_method = 'UUID'
+        
+        if not existing and computer_id:
+            existing = get_computer_by_id(computer_id)
+            if existing:
+                search_method = 'ID'
+        
+        # Если устройство не найдено - возвращаем 401
         if not existing:
-            # Устройство не найдено - возвращаем 401
             heartbeat_logger.warning(
-                f"HEARTBEAT | ID={computer_id} | IP={client_ip} | Ver={ver} | "
-                f"Status=not_registered | HTTP=401 | Action=client_will_send_sysinfo"
+                f"HEARTBEAT | UUID={uuid or 'N/A'} | ID={computer_id or 'N/A'} | "
+                f"IP={client_ip} | Status=not_registered | HTTP=401"
             )
             return "", 401
         
         # Устройство найдено - обновляем heartbeat
-        update_heartbeat(computer_id, client_ip, ver)
-        
-        hostname = existing.get('hostname', 'Unknown')
-        username = existing.get('username', 'Unknown')
-        
-        heartbeat_logger.info(
-            f"HEARTBEAT | ID={computer_id} | Hostname={hostname} | User={username} | "
-            f"IP={client_ip} | Ver={ver} | Status=registered | HTTP=200"
+        updated, new_timestamp = update_heartbeat(
+            existing['uuid'], client_ip, conns, modified_at, computer_id
         )
         
-        return jsonify({}), 200
+        # Дополняем информацию: если нашли по ID, но в записи нет UUID - обновляем
+        if search_method == 'ID' and not existing.get('uuid') and uuid:
+            update_computer_with_id(uuid, computer_id)
+            heartbeat_logger.info(
+                f"HEARTBEAT | Найден по ID={computer_id}, дополнен UUID={uuid} | "
+                f"Hostname={existing.get('hostname', 'Unknown')} | IP={client_ip}"
+            )
+        # Если нашли по UUID, но в записи нет ID - обновляем
+        elif search_method == 'UUID' and not existing.get('id') and computer_id:
+            update_computer_with_id(uuid, computer_id)
+            heartbeat_logger.info(
+                f"HEARTBEAT | Найден по UUID={uuid}, дополнен ID={computer_id} | "
+                f"Hostname={existing.get('hostname', 'Unknown')} | IP={client_ip}"
+            )
+        
+        if updated:
+            heartbeat_logger.info(
+                f"HEARTBEAT | UUID={existing['uuid']} | ID={existing.get('id', 'N/A')} | "
+                f"Hostname={existing.get('hostname', 'Unknown')} | IP={client_ip} | Status=online"
+            )
+            return jsonify({'modified_at': new_timestamp}), 200
+        else:
+            heartbeat_logger.error(f"HEARTBEAT | UUID={existing['uuid']} | IP={client_ip} | Status=update_failed")
+            return jsonify({}), 500
         
     except json.JSONDecodeError as e:
         heartbeat_logger.error(f"HEARTBEAT | IP={client_ip} | Error=Invalid JSON: {str(e)}")
@@ -262,7 +384,7 @@ def heartbeat():
 
 @app.route('/api/version', methods=['GET'])
 def get_version():
-    """Возвращает версию API"""
+    """Возвращает версию API при старте клиента"""
     return API_VERSION, 200
 
 @app.route('/api/logs/sysinfo', methods=['GET'])
@@ -316,23 +438,19 @@ def get_stats():
     try:
         computers = load_data()
         online_count = 0
-        now = datetime.now()
+        now_timestamp = int(datetime.now().timestamp())
         
         for comp in computers:
-            last_online = comp.get('last_online')
-            if last_online:
-                try:
-                    last_time = datetime.fromisoformat(last_online)
-                    if (now - last_time).total_seconds() < 30:
-                        online_count += 1
-                except:
-                    pass
+            last_online_ts = comp.get('last_online_timestamp')
+            if last_online_ts and (now_timestamp - last_online_ts) < 35:
+                online_count += 1
         
         return jsonify({
             'total_computers': len(computers),
             'online_computers': online_count,
             'offline_computers': len(computers) - online_count,
-            'api_version': API_VERSION
+            'api_version': API_VERSION,
+            'server_version': SERVER_VERSION
         })
     except Exception as e:
         error_logger.error(f"Error stats: {e}")
@@ -348,42 +466,35 @@ def health_check():
             'timestamp': datetime.now().isoformat(),
             'database': 'json',
             'computers_count': len(computers),
-            'api_version': API_VERSION
+            'api_version': API_VERSION,
+            'server_version': SERVER_VERSION
         })
     except Exception as e:
         return jsonify({'status': 'unhealthy', 'error': str(e)}), 500
 
 if __name__ == '__main__':
-    # Создаем необходимые директории
     os.makedirs('/data', exist_ok=True)
     os.makedirs('static', exist_ok=True)
     
-    # Инициализация файла данных
     if not os.path.exists(DATA_FILE):
         save_data([])
     
     print("=" * 60)
-    print("🚀 RustDesk Monitor Server v1.0 (JSON storage)")
+    print("🚀 RustDesk Monitor Server v4.0 (Smart Heartbeat)")
     print("=" * 60)
     print(f"📁 Data file: {DATA_FILE}")
     print(f"🌐 Web UI: http://0.0.0.0:21114")
     print(f"📡 API endpoints:")
-    print(f"   POST /api/sysinfo    - регистрация/обновление")
-    print(f"   POST /api/heartbeat  - обновление статуса")
-    print(f"   GET  /api/computers  - список компьютеров")
-    print(f"   GET  /api/stats      - статистика")
-    print(f"   GET  /api/logs/sysinfo   - логи sysinfo")
-    print(f"   GET  /api/logs/heartbeat - логи heartbeat")
-    print(f"   GET  /api/logs/errors    - логи ошибок")
+    print(f"   POST /api/sysinfo      - системная информация (UUID обязателен)")
+    print(f"   POST /api/heartbeat    - heartbeat (автодополнение ID/UUID)")
+    print(f"   GET  /api/computers    - список компьютеров")
     print("=" * 60)
-    print("📡 Heartbeat logic:")
-    print("   - 200 OK + {} → устройство зарегистрировано")
-    print("   - 401 Unauthorized → устройство НЕ зарегистрировано (клиент отправит sysinfo)")
-    print("=" * 60)
-    print("📊 Логи сохраняются в /data/")
-    print("   - sysinfo.log   - все регистрации и обновления")
-    print("   - heartbeat.log - все heartbeat запросы")
-    print("   - errors.log    - ошибки")
+    print("📡 Smart Heartbeat логика:")
+    print("   1. Ищем сначала по UUID")
+    print("   2. Если не найден - ищем по ID")
+    print("   3. Если найден по ID, но нет UUID - дополняем UUID")
+    print("   4. Если найден по UUID, но нет ID - дополняем ID")
+    print("   5. Если не найден - возвращаем 401")
     print("=" * 60)
     
     app.run(host='0.0.0.0', port=21114, debug=False)
