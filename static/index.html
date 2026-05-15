@@ -6,10 +6,7 @@
     <title>Светогорский ЦБК | Мониторинг оборудования</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="style.css">
-    <style>
-        /* Дополнительные стили, которые не поместились в основной файл (опционально) */
-    </style>
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 <body class="pattern-bg">
     <div class="monitor-container">
@@ -40,6 +37,15 @@
                             <div class="stat-value" id="offlineCount">0</div>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Navigation -->
+            <div class="nav-bar">
+                <div class="nav-links">
+                    <a href="/">📊 Мониторинг</a>
+                    <a href="/admin" id="adminLink" style="display: none;">⚙️ Управление</a>
+                    <a href="/logout">🚪 Выход</a>
                 </div>
             </div>
 
@@ -108,126 +114,34 @@
         </div>
     </div>
 
-    <!-- Toast Notification -->
     <div id="toast" class="toast-notification">
         <i class="fas fa-plug"></i>
         <span id="toastMessage">Подключение...</span>
     </div>
 
-    <!-- Theme Toggle Button -->
-    <button class="theme-toggle" id="themeToggle" title="Переключить тему">
-        <i class="fas fa-moon"></i>
-    </button>
-
     <script>
-        // API URL
         const API_URL = window.location.origin;
-
-        // Управление темой
-        function initTheme() {
-            const savedTheme = localStorage.getItem('theme') || 'light';
-            document.documentElement.setAttribute('data-theme', savedTheme);
-            updateThemeIcon(savedTheme);
-        }
-
-        function toggleTheme() {
-            const currentTheme = document.documentElement.getAttribute('data-theme');
-            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-            document.documentElement.setAttribute('data-theme', newTheme);
-            localStorage.setItem('theme', newTheme);
-            updateThemeIcon(newTheme);
-        }
-
-        function updateThemeIcon(theme) {
-            const icon = document.querySelector('#themeToggle i');
-            if (theme === 'dark') {
-                icon.className = 'fas fa-sun';
-            } else {
-                icon.className = 'fas fa-moon';
-            }
-        }
-
-        // Инициализация темы при загрузке
-        initTheme();
-
-        // Привязка обработчика переключения темы
-        document.getElementById('themeToggle').addEventListener('click', toggleTheme);
-
-        // Глобальные переменные
         let allComputers = [];
         let currentPage = 1;
         let itemsPerPage = 20;
         let autoRefreshInterval = null;
+        let isAdmin = false;
 
-        // Универсальная функция копирования в буфер обмена (работает везде)
-        function copyToClipboard(text, computerName) {
-            // Способ 1: Современный Clipboard API
-            if (navigator.clipboard && window.isSecureContext) {
-                navigator.clipboard.writeText(text).then(() => {
-                    showToastCopy(`✅ Имя "${computerName}" скопировано`);
-                }).catch(() => {
-                    // Если Clipboard API не сработал, пробуем fallback
-                    fallbackCopyToClipboard(text, computerName);
-                });
-            } else {
-                // Способ 2: Fallback для старых браузеров или HTTP
-                fallbackCopyToClipboard(text, computerName);
-            }
-        }
-
-        // Fallback метод копирования (создание временного textarea)
-        function fallbackCopyToClipboard(text, computerName) {
-            const textarea = document.createElement('textarea');
-            textarea.value = text;
-            textarea.style.position = 'fixed';
-            textarea.style.top = '-9999px';
-            textarea.style.left = '-9999px';
-            document.body.appendChild(textarea);
-            
-            textarea.select();
-            textarea.setSelectionRange(0, textarea.value.length);
-            
-            let success = false;
+        async function checkAdmin() {
             try {
-                success = document.execCommand('copy');
-            } catch (err) {
-                console.error('Fallback copy error:', err);
-            }
-            
-            document.body.removeChild(textarea);
-            
-            if (success) {
-                showToastCopy(`✅ Имя "${computerName}" скопировано`);
-            } else {
-                showToastCopy(`❌ Не удалось скопировать. Выделите имя вручную: ${computerName}`, true);
+                const response = await fetch('/api/users/me');
+                if (response.ok) {
+                    const user = await response.json();
+                    if (user.role === 'admin') {
+                        isAdmin = true;
+                        document.getElementById('adminLink').style.display = 'inline';
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking admin status:', error);
             }
         }
 
-        // Уведомление для копирования
-        function showToastCopy(message, isError = false) {
-            const toast = document.getElementById('toast');
-            const toastMessage = document.getElementById('toastMessage');
-            const icon = toast.querySelector('i');
-
-            toastMessage.textContent = message;
-
-            if (isError) {
-                icon.className = 'fas fa-exclamation-triangle';
-                toast.style.background = 'var(--status-offline-bg)';
-                toast.style.borderLeftColor = 'var(--accent-highlight)';
-            } else {
-                icon.className = 'fas fa-copy';
-                toast.style.background = 'var(--accent-primary)';
-                toast.style.borderLeftColor = 'var(--accent-highlight)';
-            }
-
-            toast.classList.add('show');
-            setTimeout(() => {
-                toast.classList.remove('show');
-            }, 2000);
-        }
-
-        // Функция показа уведомления
         function showToast(message, isError = false) {
             const toast = document.getElementById('toast');
             const toastMessage = document.getElementById('toastMessage');
@@ -237,12 +151,12 @@
 
             if (isError) {
                 icon.className = 'fas fa-exclamation-triangle';
-                toast.style.background = 'var(--status-offline-bg)';
-                toast.style.borderLeftColor = 'var(--accent-highlight)';
+                toast.style.background = '#c62828';
+                toast.style.borderLeftColor = '#FFC700';
             } else {
                 icon.className = 'fas fa-plug';
-                toast.style.background = 'var(--accent-primary)';
-                toast.style.borderLeftColor = 'var(--accent-highlight)';
+                toast.style.background = '#004D43';
+                toast.style.borderLeftColor = '#FFC700';
             }
 
             toast.classList.add('show');
@@ -251,53 +165,30 @@
             }, 3000);
         }
 
-        // Подключение через RustDesk
         function connectRustDesk(computerId, computerName) {
             if (!computerId) {
                 showToast('ID оборудования не указан', true);
                 return;
             }
-
             showToast(`🖥️ Подключение к ${computerName || computerId}...`);
-            const rustdeskUrl = `rustdesk://connection/new/${computerId}`;
-
-            try {
-                window.location.href = rustdeskUrl;
-                setTimeout(() => {
-                    const altUrl = `rustdesk://${computerId}`;
-                    window.location.href = altUrl;
-                }, 500);
-            } catch (error) {
-                console.error('RustDesk error:', error);
-                showToast('❌ Не удалось запустить RustDesk. Убедитесь, что он установлен', true);
-            }
+            window.location.href = `rustdesk://connection/new/${computerId}`;
         }
 
-        // Форматирование даты
         function formatDate(dateString) {
             if (!dateString) return 'Никогда';
             const date = new Date(dateString);
             const now = new Date();
             const diffSeconds = Math.floor((now - date) / 1000);
-
             if (diffSeconds < 60) return `${diffSeconds} сек назад`;
             if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)} мин назад`;
-            return date.toLocaleString('ru-RU', {
-                day: '2-digit',
-                month: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
+            return date.toLocaleString('ru-RU');
         }
 
-        // Проверка онлайн статуса
         function isOnline(lastSeen) {
             if (!lastSeen) return false;
-            const diffSeconds = (new Date() - new Date(lastSeen)) / 1000;
-            return diffSeconds < 30;
+            return (new Date() - new Date(lastSeen)) < 30000;
         }
 
-        // Фильтрация
         function filterComputers(computers, searchTerm, searchType) {
             if (!searchTerm) return computers;
             const term = searchTerm.toLowerCase();
@@ -315,7 +206,6 @@
             });
         }
 
-        // Обновление отображения
         function updateDisplay() {
             const searchTerm = document.getElementById('searchInput').value;
             const searchType = document.getElementById('searchType').value;
@@ -357,36 +247,18 @@
 
             tbody.innerHTML = paginatedData.map((computer, idx) => {
                 const online = isOnline(computer.last_online);
-                const computerName = escapeHtml(computer.hostname || computer.computer_name || 'Unknown');
-                const computerId = escapeHtml(computer.id);
+                const computerName = escapeHtml(computer.hostname || 'Unknown');
                 return `
-                    <tr>
+                    <tr onclick="connectRustDesk('${escapeHtml(computer.id)}', '${computerName}')">
                         <td><strong>${startIndex + idx + 1}</strong></td>
-                        <td>
-                            <div class="computer-name" onclick="copyToClipboard('${computerName.replace(/'/g, "\\'")}', '${computerName.replace(/'/g, "\\'")}')" title="Нажмите чтобы скопировать имя">
-                                <i class="fas fa-laptop-code"></i>
-                                ${computerName}
-                            </div>
-                        </td>
-                        <td>
-                            <div class="computer-id" onclick="connectRustDesk('${computerId}', '${computerName.replace(/'/g, "\\'")}')" title="Нажмите для подключения через RustDesk">
-                                ${computerId} <i class="fas fa-external-link-alt"></i>
-                            </div>
-                        </td>
-                        <td>
-                            <div class="username-badge">
-                                <i class="fas fa-user"></i>
-                                ${escapeHtml(computer.username || 'Unknown')}
-                            </div>
-                        </td>
+                        <td><div class="computer-name"><i class="fas fa-laptop-code"></i> ${computerName}</div></td>
+                        <td><span class="computer-id">${escapeHtml(computer.id)} <i class="fas fa-external-link-alt"></i></span></td>
+                        <td><i class="fas fa-user"></i> ${escapeHtml(computer.username || 'Unknown')}</td>
                         <td><i class="fas fa-network-wired"></i> ${escapeHtml(computer.ip || 'N/A')}</td>
-                        <td>
-                            <div class="${online ? 'status-online' : 'status-offline'}">
-                                <i class="fas fa-circle"></i>
-                                ${online ? 'АКТИВНО' : 'ОФФЛАЙН'}
-                            </div>
-                        </td>
-                        <td><i class="far fa-clock"></i> ${formatDate(computer.last_online)}</span>
+                        <td><div class="${online ? 'status-online' : 'status-offline'}">
+                            <i class="fas fa-circle"></i> ${online ? 'АКТИВНО' : 'ОФФЛАЙН'}
+                        </div></td>
+                        <td><i class="far fa-clock"></i> ${formatDate(computer.last_online)}</span></td>
                     </tr>
                 `;
             }).join('');
@@ -404,6 +276,8 @@
                 allComputers = await response.json();
                 currentPage = 1;
                 updateDisplay();
+                const onlineCount = allComputers.filter(c => isOnline(c.last_online)).length;
+                showToast(`✅ Загружено ${allComputers.length} устройств, активно: ${onlineCount}`, false);
             } catch (error) {
                 console.error('Ошибка загрузки:', error);
                 showToast('❌ Ошибка подключения к серверу', true);
@@ -425,6 +299,7 @@
         if (autoRefreshInterval) clearInterval(autoRefreshInterval);
         autoRefreshInterval = setInterval(loadComputers, 15000);
 
+        checkAdmin();
         loadComputers();
     </script>
 </body>
