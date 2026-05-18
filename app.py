@@ -32,7 +32,7 @@ sysinfo_handler.setFormatter(logging.Formatter(log_format, date_format))
 sysinfo_logger.addHandler(sysinfo_handler)
 
 heartbeat_logger = logging.getLogger('heartbeat')
-heartbeat_logger.setLevel(logging.INFO)
+heartbeat_logger.setLevel(logging.ERROR)
 heartbeat_handler = RotatingFileHandler('/data/heartbeat.log', maxBytes=10485760, backupCount=5)
 heartbeat_handler.setFormatter(logging.Formatter(log_format, date_format))
 heartbeat_logger.addHandler(heartbeat_handler)
