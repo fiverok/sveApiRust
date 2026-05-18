@@ -32,7 +32,7 @@ sysinfo_handler.setFormatter(logging.Formatter(log_format, date_format))
 sysinfo_logger.addHandler(sysinfo_handler)
 
 heartbeat_logger = logging.getLogger('heartbeat')
-heartbeat_logger.setLevel(logging.WARNING)  # Только ошибки и предупреждения
+heartbeat_logger.setLevel(logging.INFO)
 heartbeat_handler = RotatingFileHandler('/data/heartbeat.log', maxBytes=10485760, backupCount=5)
 heartbeat_handler.setFormatter(logging.Formatter(log_format, date_format))
 heartbeat_logger.addHandler(heartbeat_handler)
@@ -55,11 +55,9 @@ log.setLevel(logging.ERROR)
 app.logger.disabled = True
 
 # ========== НАСТРОЙКИ БД ==========
-# Используем локальный файл блокировки
 DB_LOCK = threading.RLock()
 
 def get_db_connection():
-    """Создает новое соединение с БД"""
     conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
@@ -69,7 +67,6 @@ def get_db_connection():
     return conn
 
 def execute_query(query, params=None, fetch_one=False, fetch_all=False):
-    """Безопасное выполнение запроса с блокировкой"""
     with DB_LOCK:
         conn = None
         try:
@@ -77,7 +74,14 @@ def execute_query(query, params=None, fetch_one=False, fetch_all=False):
             cursor = conn.cursor()
             
             if params:
-                cursor.execute(query, params)
+                # Преобразуем списки в JSON строки
+                processed_params = []
+                for p in params:
+                    if isinstance(p, (list, tuple, dict)):
+                        processed_params.append(json.dumps(p, ensure_ascii=False))
+                    else:
+                        processed_params.append(p)
+                cursor.execute(query, processed_params)
             else:
                 cursor.execute(query)
             
@@ -105,9 +109,7 @@ def execute_query(query, params=None, fetch_one=False, fetch_all=False):
             if conn:
                 conn.close()
 
-# ========== ИНИЦИАЛИЗАЦИЯ БД ==========
 def init_db():
-    """Инициализация базы данных"""
     with DB_LOCK:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -176,7 +178,6 @@ def init_db():
         conn.close()
         error_logger.info("Database initialized successfully")
 
-# ========== ФУНКЦИИ БЕЗОПАСНОСТИ ==========
 def hash_password(password, salt=None):
     if not salt:
         salt = secrets.token_hex(16)
@@ -228,7 +229,6 @@ def require_admin(f):
         return redirect(url_for('login_page'))
     return decorated_function
 
-# ========== ФУНКЦИИ ДЛЯ РАБОТЫ С ДАННЫМИ ==========
 def get_computer_by_uuid(uuid):
     if not uuid:
         return None
@@ -253,6 +253,11 @@ def update_sysinfo(data, client_ip):
     now_iso = now.isoformat()
     now_timestamp = int(now.timestamp())
     
+    # Преобразуем conns в JSON если это список
+    conns = data.get('conns')
+    if isinstance(conns, (list, tuple)):
+        conns = json.dumps(conns)
+    
     existing = get_computer_by_uuid(uuid)
     
     if existing:
@@ -268,7 +273,8 @@ def update_sysinfo(data, client_ip):
                 ip = ?,
                 last_update = ?,
                 last_update_timestamp = ?,
-                modified_at = COALESCE(?, modified_at)
+                modified_at = COALESCE(?, modified_at),
+                conns = COALESCE(?, conns)
             WHERE uuid = ?
         ''', (
             computer_id if computer_id else existing.get('id'),
@@ -282,6 +288,7 @@ def update_sysinfo(data, client_ip):
             now_iso,
             now_timestamp,
             data.get('modified_at', now_timestamp),
+            conns,
             uuid
         ))
         result = 'UPDATED'
@@ -289,8 +296,8 @@ def update_sysinfo(data, client_ip):
         execute_query('''
             INSERT INTO computers (
                 id, uuid, hostname, username, os, cpu, memory, version,
-                ip, last_update, last_update_timestamp, modified_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ip, last_update, last_update_timestamp, modified_at, conns, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             computer_id if computer_id else '',
             uuid,
@@ -304,6 +311,7 @@ def update_sysinfo(data, client_ip):
             now_iso,
             now_timestamp,
             data.get('modified_at', now_timestamp),
+            conns,
             now_iso
         ))
         result = 'CREATED'
@@ -314,6 +322,10 @@ def update_heartbeat(uuid, client_ip, conns=None, modified_at=None, computer_id=
     now = datetime.now()
     now_iso = now.isoformat()
     now_timestamp = int(now.timestamp())
+    
+    # Преобразуем conns в JSON если это список
+    if isinstance(conns, (list, tuple)):
+        conns = json.dumps(conns)
     
     try:
         execute_query('''
@@ -332,7 +344,7 @@ def update_heartbeat(uuid, client_ip, conns=None, modified_at=None, computer_id=
             client_ip,
             client_ip,
             modified_at,
-            json.dumps(conns) if conns else None,
+            conns,
             computer_id if computer_id else None,
             uuid
         ))
@@ -501,24 +513,37 @@ def get_audit_logs():
 def register_sysinfo():
     client_ip = request.remote_addr
     try:
-        data = request.get_json()
-        if not data:
+        # Пробуем получить JSON
+        if request.is_json:
+            data = request.get_json()
+        else:
             raw_data = request.get_data(as_text=True)
             if raw_data:
                 try:
                     data = json.loads(raw_data)
                 except:
-                    pass
+                    data = None
+            else:
+                data = None
         
-        if not data or 'uuid' not in data:
+        if not data:
+            error_logger.error(f"Sysinfo: No data received from {client_ip}")
+            return "MISSING_UUID", 400
+        
+        if 'uuid' not in data:
+            error_logger.error(f"Sysinfo: Missing UUID from {client_ip}, data: {data}")
             return "MISSING_UUID", 400
         
         computer, result = update_sysinfo(data, client_ip)
         if not computer:
+            error_logger.error(f"Sysinfo: Failed to update computer with UUID={data.get('uuid')}")
             return "MISSING_UUID", 400
         
         sysinfo_logger.info(f"SYSINFO | UUID={computer['uuid']} | Hostname={computer['hostname']} | Action={result}")
         return "SYSINFO_UPDATED", 200
+    except json.JSONDecodeError as e:
+        error_logger.error(f"Sysinfo JSON error from {client_ip}: {e}")
+        return "MISSING_UUID", 400
     except Exception as e:
         error_logger.error(f"Error sysinfo: {e}")
         return "ERROR", 500
@@ -527,14 +552,17 @@ def register_sysinfo():
 def heartbeat():
     client_ip = request.remote_addr
     try:
-        data = request.get_json()
-        if not data:
+        if request.is_json:
+            data = request.get_json()
+        else:
             raw_data = request.get_data(as_text=True)
             if raw_data:
                 try:
                     data = json.loads(raw_data)
                 except:
-                    pass
+                    data = None
+            else:
+                data = None
         
         if not data:
             return jsonify({}), 400

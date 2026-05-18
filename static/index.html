@@ -94,7 +94,7 @@
                             <td colspan="7" class="empty-state">
                                 <i class="fas fa-spinner fa-pulse"></i>
                                 <p>Загрузка данных...</p>
-                            </td>
+                            </span>
                         </tr>
                     </tbody>
                 </table>
@@ -122,7 +122,8 @@
 
     <script>
         const API_URL = window.location.origin;
-        let allComputers = [];
+        let allComputers = [];      // Полный список всех компьютеров
+        let filteredComputers = [];  // Отфильтрованный список (результат поиска)
         let currentPage = 1;
         let itemsPerPage = 20;
         let autoRefreshInterval = null;
@@ -205,7 +206,6 @@
             }, 2000);
         }
 
-        // Уведомление только для ошибок и подключения
         function showToast(message, isError = false) {
             const toast = document.getElementById('toast');
             const toastMessage = document.getElementById('toastMessage');
@@ -253,48 +253,56 @@
             return (new Date() - new Date(lastSeen)) < 30000;
         }
 
-        function filterComputers(computers, searchTerm, searchType) {
-            if (!searchTerm) return computers;
-            const term = searchTerm.toLowerCase();
-            return computers.filter(computer => {
+        // Функция фильтрации компьютеров
+        function filterComputers() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const searchType = document.getElementById('searchType').value;
+            
+            if (!searchTerm) {
+                // Если поиск пустой - показываем пустой список
+                filteredComputers = [];
+                document.getElementById('searchInfoText').innerHTML = `Введите текст для поиска`;
+                return;
+            }
+            
+            filteredComputers = allComputers.filter(computer => {
                 switch(searchType) {
-                    case 'hostname': return (computer.hostname || '').toLowerCase().includes(term);
-                    case 'username': return (computer.username || '').toLowerCase().includes(term);
-                    case 'id': return (computer.id || '').toLowerCase().includes(term);
-                    case 'ip': return (computer.ip || '').toLowerCase().includes(term);
-                    default: return (computer.hostname || '').toLowerCase().includes(term) ||
-                                   (computer.username || '').toLowerCase().includes(term) ||
-                                   (computer.id || '').toLowerCase().includes(term) ||
-                                   (computer.ip || '').toLowerCase().includes(term);
+                    case 'hostname':
+                        return (computer.hostname || '').toLowerCase().includes(searchTerm);
+                    case 'username':
+                        return (computer.username || '').toLowerCase().includes(searchTerm);
+                    case 'id':
+                        return (computer.id || '').toLowerCase().includes(searchTerm);
+                    case 'ip':
+                        return (computer.ip || '').toLowerCase().includes(searchTerm);
+                    default:
+                        return (computer.hostname || '').toLowerCase().includes(searchTerm) ||
+                               (computer.username || '').toLowerCase().includes(searchTerm) ||
+                               (computer.id || '').toLowerCase().includes(searchTerm) ||
+                               (computer.ip || '').toLowerCase().includes(searchTerm);
                 }
             });
+            
+            document.getElementById('searchInfoText').innerHTML = `Найдено: ${filteredComputers.length} из ${allComputers.length} устройств`;
         }
 
+        // Обновление отображения (показывает только отфильтрованный список)
         function updateDisplay() {
-            const searchTerm = document.getElementById('searchInput').value;
-            const searchType = document.getElementById('searchType').value;
-            let filtered = filterComputers(allComputers, searchTerm, searchType);
-
-            const searchInfoText = document.getElementById('searchInfoText');
-            if (searchTerm) {
-                searchInfoText.innerHTML = `Найдено: ${filtered.length} из ${allComputers.length} устройств`;
-            } else {
-                searchInfoText.innerHTML = `Всего оборудования в системе: ${allComputers.length}`;
-            }
-
+            // Статистика по всем устройствам (для верхних счетчиков)
             const onlineCount = allComputers.filter(c => isOnline(c.last_online)).length;
             const offlineCount = allComputers.length - onlineCount;
             document.getElementById('onlineCount').textContent = onlineCount;
             document.getElementById('offlineCount').textContent = offlineCount;
             document.getElementById('totalCount').textContent = allComputers.length;
 
-            const totalPages = Math.ceil(filtered.length / itemsPerPage);
+            // Пагинация для отфильтрованного списка
+            const totalPages = Math.ceil(filteredComputers.length / itemsPerPage);
             const startIndex = (currentPage - 1) * itemsPerPage;
-            const endIndex = Math.min(startIndex + itemsPerPage, filtered.length);
-            const paginatedData = filtered.slice(startIndex, endIndex);
+            const endIndex = Math.min(startIndex + itemsPerPage, filteredComputers.length);
+            const paginatedData = filteredComputers.slice(startIndex, endIndex);
 
             const paginationWrapper = document.getElementById('paginationWrapper');
-            if (totalPages > 1) {
+            if (totalPages > 1 && filteredComputers.length > 0) {
                 paginationWrapper.style.display = 'flex';
                 document.getElementById('pageInfo').innerHTML = `Страница ${currentPage} из ${totalPages}`;
                 document.getElementById('prevBtn').disabled = currentPage === 1;
@@ -304,8 +312,15 @@
             }
 
             const tbody = document.getElementById('tableBody');
-            if (paginatedData.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="7" class="empty-state"><i class="fas fa-search"></i><p>Оборудование не найдено</p></td></tr>`;
+            
+            // Если нет результатов поиска
+            if (filteredComputers.length === 0) {
+                const searchTerm = document.getElementById('searchInput').value;
+                if (!searchTerm) {
+                    tbody.innerHTML = `<tr><td colspan="7" class="empty-state"><i class="fas fa-search"></i><p>Введите текст для поиска</p></td></tr>`;
+                } else {
+                    tbody.innerHTML = `<tr><td colspan="7" class="empty-state"><i class="fas fa-search"></i><p>Оборудование не найдено</p></td></tr>`;
+                }
                 return;
             }
 
@@ -333,7 +348,7 @@
                                 <i class="fas fa-circle"></i> ${online ? 'АКТИВНО' : 'ОФФЛАЙН'}
                             </div>
                         </td>
-                        <td><i class="far fa-clock"></i> ${formatDate(computer.last_online)}</span></td>
+                        <td><i class="far fa-clock"></i> ${formatDate(computer.last_online)}</td>
                     </tr>
                 `;
             }).join('');
@@ -349,9 +364,10 @@
                 const response = await fetch(`${API_URL}/api/computers`);
                 if (!response.ok) throw new Error('Ошибка загрузки');
                 allComputers = await response.json();
+                // После загрузки применяем текущий поиск
+                filterComputers();
                 currentPage = 1;
                 updateDisplay();
-                // Убрано всплывающее сообщение о загрузке
             } catch (error) {
                 console.error('Ошибка загрузки:', error);
                 showToast('❌ Ошибка подключения к серверу', true);
@@ -359,16 +375,33 @@
             }
         }
 
-        function prevPage() { if (currentPage > 1) { currentPage--; updateDisplay(); } }
+        function prevPage() { 
+            if (currentPage > 1) { 
+                currentPage--; 
+                updateDisplay(); 
+            } 
+        }
+        
         function nextPage() {
-            const searchTerm = document.getElementById('searchInput').value;
-            const searchType = document.getElementById('searchType').value;
-            const filtered = filterComputers(allComputers, searchTerm, searchType);
-            if (currentPage < Math.ceil(filtered.length / itemsPerPage)) { currentPage++; updateDisplay(); }
+            const totalPages = Math.ceil(filteredComputers.length / itemsPerPage);
+            if (currentPage < totalPages) { 
+                currentPage++; 
+                updateDisplay(); 
+            }
         }
 
-        document.getElementById('searchInput').addEventListener('input', () => { currentPage = 1; updateDisplay(); });
-        document.getElementById('searchType').addEventListener('change', () => { currentPage = 1; updateDisplay(); });
+        // Обработчики событий - при изменении поиска сбрасываем страницу на 1
+        document.getElementById('searchInput').addEventListener('input', () => {
+            filterComputers();
+            currentPage = 1;
+            updateDisplay();
+        });
+        
+        document.getElementById('searchType').addEventListener('change', () => {
+            filterComputers();
+            currentPage = 1;
+            updateDisplay();
+        });
 
         if (autoRefreshInterval) clearInterval(autoRefreshInterval);
         autoRefreshInterval = setInterval(loadComputers, 15000);

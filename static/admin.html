@@ -73,7 +73,6 @@
                 <table class="computers-table">
                     <thead>
                         <tr>
-                            <th>UUID</th>
                             <th>Имя устройства</th>
                             <th>ID</th>
                             <th>Пользователь</th>
@@ -84,7 +83,7 @@
                         </tr>
                     </thead>
                     <tbody id="devicesTableBody">
-                        <tr><td colspan="8" class="empty-state">Загрузка...</td</tr>
+                        <tr><td colspan="7" class="empty-state">Загрузка...</td</tr>
                     </tbody>
                 </table>
             </div>
@@ -207,7 +206,7 @@
 
             const tbody = document.getElementById('devicesTableBody');
             if (filtered.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Нет устройств</td</tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Нет устройств</td</tr>';
                 return;
             }
 
@@ -215,7 +214,6 @@
                 const online = isOnline(device.last_online);
                 return `
                     <tr>
-                        <td><code style="font-size: 10px;">${escapeHtml(device.uuid || '-')}</code></td>
                         <td><strong>${escapeHtml(device.hostname || 'Unknown')}</strong></td>
                         <td><code>${escapeHtml(device.id || '-')}</code></td>
                         <td>${escapeHtml(device.username || 'Unknown')}</td>
@@ -295,7 +293,7 @@
 
         function escapeHtml(str) {
             if (!str) return '';
-            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
         document.getElementById('searchDevices').addEventListener('input', filterDevices);
