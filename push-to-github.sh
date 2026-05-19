@@ -44,13 +44,12 @@ EOF
 
 echo "✅ .gitignore обновлен"
 
-# Проверяем наличие изменений (игнорируя исключенные файлы)
+# Проверяем наличие изменений
 if [[ -z $(git status -s --ignore-submodules) ]]; then
     echo "⚠️ Нет изменений для коммита."
-    echo "Но продолжаем для обновления тега..."
 fi
 
-# Удаляем из индекса уже отслеживаемые файлы логов и БД (если были добавлены ранее)
+# Удаляем из индекса уже отслеживаемые файлы логов и БД
 echo "🧹 Очищаем отслеживание лог-файлов и БД..."
 git rm --cached -q *.log 2>/dev/null
 git rm --cached -q *.db 2>/dev/null
@@ -62,7 +61,6 @@ git add .
 
 # Проверяем, есть ли изменения для коммита
 if [[ -n $(git status -s) ]]; then
-    # Создаем коммит
     echo "📝 Создаем коммит..."
     git commit -m "Release v5.0: Stable version with SQLite and authentication
 
@@ -78,7 +76,7 @@ else
     echo "ℹ️ Нет новых изменений для коммита"
 fi
 
-# Проверяем и создаем ветку main/master если нужно
+# Проверяем и настраиваем ветку
 CURRENT_BRANCH=$(git branch --show-current)
 if [[ -z "$CURRENT_BRANCH" ]]; then
     echo "🔄 Создаем ветку main..."
@@ -104,11 +102,42 @@ else
     BRANCH="main"
 fi
 
+# Сливаем изменения с удаленным репозиторием (если есть конфликты)
+echo "🔄 Получаем изменения с сервера..."
+git fetch origin $BRANCH 2>/dev/null
+
+# Проверяем, нужно ли сливать изменения
+if git rev-parse --verify origin/$BRANCH 2>/dev/null; then
+    echo "📥 Сливаем изменения из origin/$BRANCH..."
+    
+    # Пытаемся сделать merge (без авто-коммита при конфликтах)
+    if ! git merge origin/$BRANCH --no-edit; then
+        echo "⚠️ Возникли конфликты при слиянии!"
+        echo "🔧 Разрешите конфликты вручную, затем выполните:"
+        echo "   git add . && git commit -m 'Merge remote changes'"
+        echo "   git push origin $BRANCH"
+        exit 1
+    fi
+fi
+
 # Отправляем изменения
 echo "⬆️ Отправляем на GitHub (ветка: $BRANCH)..."
-git push -u origin $BRANCH
+if git push -u origin $BRANCH; then
+    echo "✅ Ветка $BRANCH успешно отправлена"
+else
+    echo "⚠️ Не удалось отправить ветку. Пробуем принудительную отправку..."
+    echo "❓ Хотите выполнить принудительную отправку? (y/n)"
+    read -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        git push -u origin $BRANCH --force-with-lease
+    else
+        echo "❌ Отправка отменена"
+        exit 1
+    fi
+fi
 
-# Обновляем тег v5.0 (удаляем старый и создаем новый)
+# Обновляем тег v5.0
 echo "🏷️ Обновляем тег v5.0..."
 git tag -d v5.0 2>/dev/null
 git push origin :refs/tags/v5.0 2>/dev/null
