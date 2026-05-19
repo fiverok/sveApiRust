@@ -1,4 +1,3 @@
-```markdown
 # RustDesk Monitor
 
 [![GitHub release](https://img.shields.io/badge/release-v5.0-brightgreen)](https://github.com/fiverok/sveApiRust/releases)
@@ -353,4 +352,3 @@ MIT License. См. файл [LICENSE](LICENSE) для деталей.
 <div align="center">
   <sub>Built with ❤️ for НПАО «Светогорский ЦБК»</sub>
 </div>
-```
