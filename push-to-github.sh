@@ -141,7 +141,7 @@ fi
 echo "🏷️ Обновляем тег v5.0..."
 git tag -d v5.0 2>/dev/null
 git push origin :refs/tags/v5.0 2>/dev/null
-git tag -a v5.0 -m "Version 5.0: Stable release with SQLite and authentication"
+git tag -a v5.0 -m "Update README.md with complete documentation"
 git push origin v5.0
 
 echo ""
