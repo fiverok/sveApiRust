@@ -10,6 +10,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 import time
 import threading
+import traceback
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
 
@@ -32,7 +33,7 @@ sysinfo_handler.setFormatter(logging.Formatter(log_format, date_format))
 sysinfo_logger.addHandler(sysinfo_handler)
 
 heartbeat_logger = logging.getLogger('heartbeat')
-heartbeat_logger.setLevel(logging.ERROR)
+heartbeat_logger.setLevel(logging.WARNING)
 heartbeat_handler = RotatingFileHandler('/data/heartbeat.log', maxBytes=10485760, backupCount=5)
 heartbeat_handler.setFormatter(logging.Formatter(log_format, date_format))
 heartbeat_logger.addHandler(heartbeat_handler)
@@ -74,7 +75,6 @@ def execute_query(query, params=None, fetch_one=False, fetch_all=False):
             cursor = conn.cursor()
             
             if params:
-                # Преобразуем списки в JSON строки
                 processed_params = []
                 for p in params:
                     if isinstance(p, (list, tuple, dict)):
@@ -253,7 +253,6 @@ def update_sysinfo(data, client_ip):
     now_iso = now.isoformat()
     now_timestamp = int(now.timestamp())
     
-    # Преобразуем conns в JSON если это список
     conns = data.get('conns')
     if isinstance(conns, (list, tuple)):
         conns = json.dumps(conns)
@@ -323,7 +322,6 @@ def update_heartbeat(uuid, client_ip, conns=None, modified_at=None, computer_id=
     now_iso = now.isoformat()
     now_timestamp = int(now.timestamp())
     
-    # Преобразуем conns в JSON если это список
     if isinstance(conns, (list, tuple)):
         conns = json.dumps(conns)
     
@@ -512,26 +510,34 @@ def get_audit_logs():
 @app.route('/api/sysinfo', methods=['POST'])
 def register_sysinfo():
     client_ip = request.remote_addr
+    raw_data = request.get_data(as_text=True)
+    content_length = request.content_length
+    
+    # Обработка пустого запроса (Content-Length = 0)
+    if not raw_data or content_length == 0:
+        error_logger.info(f"Sysinfo: Empty request from {client_ip}, returning version info")
+        return f"RustDesk Monitor v{SERVER_VERSION}", 200
+    
+    headers = dict(request.headers)
+    
     try:
-        # Пробуем получить JSON
         if request.is_json:
             data = request.get_json()
         else:
-            raw_data = request.get_data(as_text=True)
-            if raw_data:
-                try:
-                    data = json.loads(raw_data)
-                except:
-                    data = None
-            else:
-                data = None
+            try:
+                data = json.loads(raw_data)
+            except json.JSONDecodeError as e:
+                error_logger.error(f"Sysinfo JSON decode error from {client_ip}: {e}")
+                error_logger.error(f"Raw data: {raw_data[:500]}")
+                return "MISSING_UUID", 400
         
         if not data:
             error_logger.error(f"Sysinfo: No data received from {client_ip}")
             return "MISSING_UUID", 400
         
         if 'uuid' not in data:
-            error_logger.error(f"Sysinfo: Missing UUID from {client_ip}, data: {data}")
+            error_logger.error(f"Sysinfo: Missing UUID from {client_ip}")
+            error_logger.error(f"Data received: {json.dumps(data, ensure_ascii=False)[:500]}")
             return "MISSING_UUID", 400
         
         computer, result = update_sysinfo(data, client_ip)
@@ -541,28 +547,37 @@ def register_sysinfo():
         
         sysinfo_logger.info(f"SYSINFO | UUID={computer['uuid']} | Hostname={computer['hostname']} | Action={result}")
         return "SYSINFO_UPDATED", 200
+        
     except json.JSONDecodeError as e:
         error_logger.error(f"Sysinfo JSON error from {client_ip}: {e}")
+        error_logger.error(f"Raw data: {raw_data[:500] if raw_data else 'empty'}")
         return "MISSING_UUID", 400
     except Exception as e:
-        error_logger.error(f"Error sysinfo: {e}")
+        error_logger.error(f"Error sysinfo from {client_ip}: {e}")
+        error_logger.error(f"Raw data: {raw_data[:500] if raw_data else 'empty'}")
+        error_logger.error(traceback.format_exc())
         return "ERROR", 500
 
 @app.route('/api/heartbeat', methods=['POST'])
 def heartbeat():
     client_ip = request.remote_addr
+    raw_data = request.get_data(as_text=True)
+    content_length = request.content_length
+    
+    # Обработка пустого запроса
+    if not raw_data or content_length == 0:
+        error_logger.info(f"Heartbeat: Empty request from {client_ip}")
+        return jsonify({}), 200
+    
     try:
         if request.is_json:
             data = request.get_json()
         else:
-            raw_data = request.get_data(as_text=True)
-            if raw_data:
-                try:
-                    data = json.loads(raw_data)
-                except:
-                    data = None
-            else:
-                data = None
+            try:
+                data = json.loads(raw_data)
+            except json.JSONDecodeError as e:
+                error_logger.error(f"Heartbeat JSON error from {client_ip}: {e}")
+                return jsonify({}), 400
         
         if not data:
             return jsonify({}), 400
@@ -587,7 +602,8 @@ def heartbeat():
             return jsonify({'modified_at': new_timestamp}), 200
         return jsonify({}), 500
     except Exception as e:
-        error_logger.error(f"Error heartbeat: {e}")
+        error_logger.error(f"Error heartbeat from {client_ip}: {e}")
+        error_logger.error(traceback.format_exc())
         return jsonify({}), 500
 
 @app.route('/api/version', methods=['GET'])
@@ -620,6 +636,10 @@ if __name__ == '__main__':
     print(f"📁 Database: {DB_PATH}")
     print(f"🌐 Web UI: http://0.0.0.0:21114")
     print(f"🔐 Login: http://0.0.0.0:21114/login (admin/admin)")
+    print("=" * 60)
+    print("📡 Обработка пустых запросов:")
+    print("   - /api/sysinfo (empty) → возвращает версию сервера")
+    print("   - /api/heartbeat (empty) → возвращает {}")
     print("=" * 60)
     
     app.run(host='0.0.0.0', port=21114, debug=False, threaded=True)

@@ -1,1 +1,141 @@
 2026-05-18 15:11:17 - ERROR - Error sysinfo: 400 Bad Request: The browser (or proxy) sent a request that this server could not understand.
+2026-05-18 16:42:18 - ERROR - Error sysinfo: 400 Bad Request: The browser (or proxy) sent a request that this server could not understand.
+2026-05-18 18:13:19 - ERROR - Error sysinfo: 400 Bad Request: The browser (or proxy) sent a request that this server could not understand.
+2026-05-18 19:44:18 - ERROR - Error sysinfo: 400 Bad Request: The browser (or proxy) sent a request that this server could not understand.
+2026-05-18 21:15:17 - ERROR - Error sysinfo: 400 Bad Request: The browser (or proxy) sent a request that this server could not understand.
+2026-05-18 22:46:18 - ERROR - Error sysinfo: 400 Bad Request: The browser (or proxy) sent a request that this server could not understand.
+2026-05-19 00:17:17 - ERROR - Error sysinfo: 400 Bad Request: The browser (or proxy) sent a request that this server could not understand.
+2026-05-19 01:48:17 - ERROR - Error sysinfo: 400 Bad Request: The browser (or proxy) sent a request that this server could not understand.
+2026-05-19 03:19:18 - ERROR - Error sysinfo: 400 Bad Request: The browser (or proxy) sent a request that this server could not understand.
+2026-05-19 04:50:19 - ERROR - Error sysinfo: 400 Bad Request: The browser (or proxy) sent a request that this server could not understand.
+2026-05-19 06:21:17 - ERROR - Error sysinfo: 400 Bad Request: The browser (or proxy) sent a request that this server could not understand.
+2026-05-19 07:52:17 - ERROR - Error sysinfo: 400 Bad Request: The browser (or proxy) sent a request that this server could not understand.
+2026-05-19 09:23:17 - ERROR - Error sysinfo from 10.41.226.253: 400 Bad Request: The browser (or proxy) sent a request that this server could not understand.
+2026-05-19 09:23:17 - ERROR - Raw data: empty
+2026-05-19 09:23:17 - ERROR - Headers: {'Content-Type': 'application/json', 'Host': 'rustdesk.svetopaper.com:21114', 'Content-Length': '0', 'Connection': 'Keep-Alive'}
+2026-05-19 09:23:17 - ERROR - Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/werkzeug/wrappers/request.py", line 611, in get_json
+    rv = self.json_module.loads(data)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/json/provider.py", line 188, in loads
+    return json.loads(s, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/json/decoder.py", line 355, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/flask/wrappers.py", line 130, in on_json_loading_failed
+    return super().on_json_loading_failed(e)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/werkzeug/wrappers/request.py", line 645, in on_json_loading_failed
+    raise BadRequest(f"Failed to decode JSON object: {e}")
+werkzeug.exceptions.BadRequest: 400 Bad Request: Failed to decode JSON object: Expecting value: line 1 column 1 (char 0)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/app.py", line 521, in register_sysinfo
+    data = request.get_json()
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/werkzeug/wrappers/request.py", line 620, in get_json
+    rv = self.on_json_loading_failed(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/wrappers.py", line 135, in on_json_loading_failed
+    raise BadRequest() from e
+werkzeug.exceptions.BadRequest: 400 Bad Request: The browser (or proxy) sent a request that this server could not understand.
+
+2026-05-19 09:52:42 - ERROR - Error sysinfo from 10.41.226.253: 400 Bad Request: The browser (or proxy) sent a request that this server could not understand.
+2026-05-19 09:52:42 - ERROR - Raw data: empty
+2026-05-19 09:52:42 - ERROR - Headers: {'Content-Type': 'application/json', 'Host': 'rustdesk.svetopaper.com:21114', 'Content-Length': '0', 'Connection': 'Keep-Alive'}
+2026-05-19 09:52:42 - ERROR - Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/werkzeug/wrappers/request.py", line 611, in get_json
+    rv = self.json_module.loads(data)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/json/provider.py", line 188, in loads
+    return json.loads(s, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/json/decoder.py", line 355, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/flask/wrappers.py", line 130, in on_json_loading_failed
+    return super().on_json_loading_failed(e)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/werkzeug/wrappers/request.py", line 645, in on_json_loading_failed
+    raise BadRequest(f"Failed to decode JSON object: {e}")
+werkzeug.exceptions.BadRequest: 400 Bad Request: Failed to decode JSON object: Expecting value: line 1 column 1 (char 0)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/app.py", line 521, in register_sysinfo
+    data = request.get_json()
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/werkzeug/wrappers/request.py", line 620, in get_json
+    rv = self.on_json_loading_failed(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/wrappers.py", line 135, in on_json_loading_failed
+    raise BadRequest() from e
+werkzeug.exceptions.BadRequest: 400 Bad Request: The browser (or proxy) sent a request that this server could not understand.
+
+2026-05-19 10:54:18 - ERROR - Error sysinfo from 10.41.226.253: 400 Bad Request: The browser (or proxy) sent a request that this server could not understand.
+2026-05-19 10:54:18 - ERROR - Raw data: empty
+2026-05-19 10:54:18 - ERROR - Headers: {'Content-Type': 'application/json', 'Host': 'rustdesk.svetopaper.com:21114', 'Content-Length': '0', 'Connection': 'Keep-Alive'}
+2026-05-19 10:54:18 - ERROR - Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/werkzeug/wrappers/request.py", line 611, in get_json
+    rv = self.json_module.loads(data)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/json/provider.py", line 188, in loads
+    return json.loads(s, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/json/decoder.py", line 355, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/flask/wrappers.py", line 130, in on_json_loading_failed
+    return super().on_json_loading_failed(e)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/werkzeug/wrappers/request.py", line 645, in on_json_loading_failed
+    raise BadRequest(f"Failed to decode JSON object: {e}")
+werkzeug.exceptions.BadRequest: 400 Bad Request: Failed to decode JSON object: Expecting value: line 1 column 1 (char 0)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/app.py", line 521, in register_sysinfo
+    data = request.get_json()
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/werkzeug/wrappers/request.py", line 620, in get_json
+    rv = self.on_json_loading_failed(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/flask/wrappers.py", line 135, in on_json_loading_failed
+    raise BadRequest() from e
+werkzeug.exceptions.BadRequest: 400 Bad Request: The browser (or proxy) sent a request that this server could not understand.
+
