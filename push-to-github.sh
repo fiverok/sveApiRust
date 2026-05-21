@@ -19,15 +19,16 @@ git add .
 
 # Создаем коммит
 echo "📝 Создаем коммит..."
-git commit -m "Release v5.0: Stable version with SQLite and authentication
+git commit -m "Добавлен автовыход из системы при бездействии 2 часа
 
-- SQLite database for reliable storage
-- User authentication system with roles (admin/user)
-- Admin panel for user management
-- Device management (delete devices)
-- Corporate design
-- Fixed database locking issues
-- Optimized query execution"
+- Добавлена проверка сессии каждую минуту
+- Отслеживание активности пользователя (клики, клавиши, движение мыши)
+- При бездействии 2 часа - автоматический выход
+- Уведомление об истечении сессии
+- API эндпоинты для проверки и продления сессии
+- Исправлен конфликт маршрутов выхода
+- Добавлено логирование событий таймаута в audit_log
+"
 
 # Проверяем наличие remote
 if ! git remote | grep -q origin; then
@@ -41,8 +42,8 @@ git push -u origin main 2>/dev/null || git push -u origin master
 
 # Создаем тег
 echo "🏷️ Создаем тег v5.0..."
-git tag -a v5.0 -m "Version 5.0: Stable release with SQLite and authentication"
-git push origin v5.0
+git tag -a v5.1 -m "Добавлен автовыход из системы при бездействии 2 часа"
+git push origin v5.1
 
 echo ""
 echo "✅ Готово! Изменения выгружены на GitHub"

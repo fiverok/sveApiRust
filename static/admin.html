@@ -128,6 +128,55 @@
     </div>
 
     <script>
+
+        // Проверка активности сессии каждую минуту
+        let sessionCheckInterval = null;
+
+        async function checkSession() {
+            try {
+                const response = await fetch('/api/session/check');
+                const data = await response.json();
+                
+                if (!data.active) {
+                    // Сессия истекла, перенаправляем на страницу входа
+                    if (data.reason === 'timeout') {
+                        showToast('⚠️ Сессия истекла из-за бездействия. Войдите снова.', false);
+                    } else {
+                        showToast('⚠️ Сессия неактивна. Войдите снова.', false);
+                    }
+                    setTimeout(() => {
+                        window.location.href = '/login';
+                    }, 2000);
+                    return false;
+                }
+                return true;
+            } catch (error) {
+                console.error('Session check error:', error);
+                return true;
+            }
+        }
+
+        // Запускаем проверку сессии каждую минуту
+        if (sessionCheckInterval) clearInterval(sessionCheckInterval);
+        sessionCheckInterval = setInterval(async () => {
+            const isActive = await checkSession();
+            if (!isActive) {
+                clearInterval(sessionCheckInterval);
+            }
+        }, 60000); // Проверка каждую минуту
+
+        // Обновление активности при взаимодействии с пользователем
+        function updateActivity() {
+            fetch('/api/session/extend', { method: 'POST' }).catch(console.error);
+        }
+
+        // Отслеживаем действия пользователя для продления сессии
+        document.addEventListener('click', updateActivity);
+        document.addEventListener('keypress', updateActivity);
+        document.addEventListener('mousemove', updateActivity);
+        document.addEventListener('scroll', updateActivity);
+
+
         let allDevices = [];
 
         function showToast(message, isError = false) {

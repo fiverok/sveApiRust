@@ -46,7 +46,7 @@
                 <div class="nav-links">
                     <a href="/">📊 Мониторинг</a>
                     <a href="/admin" id="adminLink" style="display: none;">⚙️ Управление</a>
-                    <a href="/logout">🚪 Выход</a>
+                    <a href="#" onclick="logout()">🚪 Выход</a>
                 </div>
             </div>
 
@@ -94,7 +94,7 @@
                             <td colspan="7" class="empty-state">
                                 <i class="fas fa-spinner fa-pulse"></i>
                                 <p>Загрузка данных...</p>
-                            </span>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
@@ -122,13 +122,81 @@
 
     <script>
         const API_URL = window.location.origin;
-        let allComputers = [];      // Полный список всех компьютеров
-        let filteredComputers = [];  // Отфильтрованный список (результат поиска)
+        let allComputers = [];
         let currentPage = 1;
         let itemsPerPage = 20;
         let autoRefreshInterval = null;
         let isAdmin = false;
+        let sessionCheckInterval = null;
+        let activityTimeout = null;
 
+        // ========== УПРАВЛЕНИЕ СЕССИЕЙ ==========
+        
+        async function checkSession() {
+            try {
+                const response = await fetch('/api/session/check');
+                const data = await response.json();
+                
+                if (!data.active) {
+                    if (data.reason === 'timeout') {
+                        showToast('⚠️ Сессия истекла из-за бездействия. Войдите снова.', false);
+                    } else {
+                        showToast('⚠️ Сессия неактивна. Войдите снова.', false);
+                    }
+                    setTimeout(() => {
+                        window.location.href = '/login';
+                    }, 2000);
+                    return false;
+                }
+                return true;
+            } catch (error) {
+                console.error('Session check error:', error);
+                return true;
+            }
+        }
+
+        async function extendSession() {
+            try {
+                await fetch('/api/session/extend', { method: 'POST' });
+            } catch (error) {
+                console.error('Session extend error:', error);
+            }
+        }
+
+        function updateActivity() {
+            extendSession();
+            if (activityTimeout) clearTimeout(activityTimeout);
+            activityTimeout = setTimeout(() => {
+                checkSession();
+            }, 120000); // Проверка через 2 минуты бездействия
+        }
+
+        async function logout() {
+            try {
+                await fetch('/api/auth/logout', { method: 'POST' });
+            } catch (error) {
+                console.error('Logout error:', error);
+            }
+            window.location.href = '/login';
+        }
+
+        // Отслеживаем действия пользователя для продления сессии
+        document.addEventListener('click', updateActivity);
+        document.addEventListener('keypress', updateActivity);
+        document.addEventListener('mousemove', updateActivity);
+        document.addEventListener('scroll', updateActivity);
+
+        // Запускаем проверку сессии каждую минуту
+        if (sessionCheckInterval) clearInterval(sessionCheckInterval);
+        sessionCheckInterval = setInterval(async () => {
+            const isActive = await checkSession();
+            if (!isActive) {
+                clearInterval(sessionCheckInterval);
+            }
+        }, 60000);
+
+        // ========== ПРОВЕРКА АДМИНИСТРАТОРА ==========
+        
         async function checkAdmin() {
             try {
                 const response = await fetch('/api/users/me');
@@ -144,7 +212,8 @@
             }
         }
 
-        // Функция копирования в буфер обмена
+        // ========== КОПИРОВАНИЕ В БУФЕР ОБМЕНА ==========
+        
         function copyToClipboard(text, computerName) {
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(text).then(() => {
@@ -183,6 +252,8 @@
             }
         }
 
+        // ========== УВЕДОМЛЕНИЯ ==========
+        
         function showToastCopy(message, isError = false) {
             const toast = document.getElementById('toast');
             const toastMessage = document.getElementById('toastMessage');
@@ -229,6 +300,8 @@
             }, 3000);
         }
 
+        // ========== ПОДКЛЮЧЕНИЕ ЧЕРЕЗ RUSTDESK ==========
+        
         function connectRustDesk(computerId, computerName) {
             if (!computerId) {
                 showToast('ID оборудования не указан', true);
@@ -238,6 +311,8 @@
             window.location.href = `rustdesk://connection/new/${computerId}`;
         }
 
+        // ========== ФОРМАТИРОВАНИЕ ==========
+        
         function formatDate(dateString) {
             if (!dateString) return 'Никогда';
             const date = new Date(dateString);
@@ -253,19 +328,24 @@
             return (new Date() - new Date(lastSeen)) < 30000;
         }
 
-        // Функция фильтрации компьютеров
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        // ========== ФИЛЬТРАЦИЯ ==========
+        
         function filterComputers() {
             const searchTerm = document.getElementById('searchInput').value.toLowerCase();
             const searchType = document.getElementById('searchType').value;
             
             if (!searchTerm) {
-                // Если поиск пустой - показываем пустой список
                 filteredComputers = [];
                 document.getElementById('searchInfoText').innerHTML = `Введите текст для поиска`;
-                return;
+                return [];
             }
             
-            filteredComputers = allComputers.filter(computer => {
+            const filtered = allComputers.filter(computer => {
                 switch(searchType) {
                     case 'hostname':
                         return (computer.hostname || '').toLowerCase().includes(searchTerm);
@@ -283,26 +363,36 @@
                 }
             });
             
-            document.getElementById('searchInfoText').innerHTML = `Найдено: ${filteredComputers.length} из ${allComputers.length} устройств`;
+            document.getElementById('searchInfoText').innerHTML = `Найдено: ${filtered.length} из ${allComputers.length} устройств`;
+            return filtered;
         }
 
-        // Обновление отображения (показывает только отфильтрованный список)
+        // ========== ОБНОВЛЕНИЕ ОТОБРАЖЕНИЯ ==========
+        
         function updateDisplay() {
-            // Статистика по всем устройствам (для верхних счетчиков)
+            const searchTerm = document.getElementById('searchInput').value;
+            
+            let filtered;
+            if (!searchTerm) {
+                filtered = [];
+                document.getElementById('searchInfoText').innerHTML = `Введите текст для поиска`;
+            } else {
+                filtered = filterComputers();
+            }
+
             const onlineCount = allComputers.filter(c => isOnline(c.last_online)).length;
             const offlineCount = allComputers.length - onlineCount;
             document.getElementById('onlineCount').textContent = onlineCount;
             document.getElementById('offlineCount').textContent = offlineCount;
             document.getElementById('totalCount').textContent = allComputers.length;
 
-            // Пагинация для отфильтрованного списка
-            const totalPages = Math.ceil(filteredComputers.length / itemsPerPage);
+            const totalPages = Math.ceil(filtered.length / itemsPerPage);
             const startIndex = (currentPage - 1) * itemsPerPage;
-            const endIndex = Math.min(startIndex + itemsPerPage, filteredComputers.length);
-            const paginatedData = filteredComputers.slice(startIndex, endIndex);
+            const endIndex = Math.min(startIndex + itemsPerPage, filtered.length);
+            const paginatedData = filtered.slice(startIndex, endIndex);
 
             const paginationWrapper = document.getElementById('paginationWrapper');
-            if (totalPages > 1 && filteredComputers.length > 0) {
+            if (totalPages > 1 && filtered.length > 0) {
                 paginationWrapper.style.display = 'flex';
                 document.getElementById('pageInfo').innerHTML = `Страница ${currentPage} из ${totalPages}`;
                 document.getElementById('prevBtn').disabled = currentPage === 1;
@@ -313,14 +403,13 @@
 
             const tbody = document.getElementById('tableBody');
             
-            // Если нет результатов поиска
-            if (filteredComputers.length === 0) {
-                const searchTerm = document.getElementById('searchInput').value;
-                if (!searchTerm) {
-                    tbody.innerHTML = `<tr><td colspan="7" class="empty-state"><i class="fas fa-search"></i><p>Введите текст для поиска</p></td></tr>`;
-                } else {
-                    tbody.innerHTML = `<tr><td colspan="7" class="empty-state"><i class="fas fa-search"></i><p>Оборудование не найдено</p></td></tr>`;
-                }
+            if (!searchTerm) {
+                tbody.innerHTML = `<tr><td colspan="7" class="empty-state"><i class="fas fa-search"></i><p>Введите текст для поиска</p></td></tr>`;
+                return;
+            }
+            
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="empty-state"><i class="fas fa-search"></i><p>Оборудование не найдено</p></td></tr>`;
                 return;
             }
 
@@ -329,43 +418,38 @@
                 const computerName = escapeHtml(computer.hostname || 'Unknown');
                 const computerId = escapeHtml(computer.id);
                 return `
-                    <tr>
+                    <tr onclick="connectRustDesk('${computerId}', '${computerName.replace(/'/g, "\\'")}')">
                         <td><strong>${startIndex + idx + 1}</strong></td>
                         <td style="cursor: pointer;" onclick="event.stopPropagation(); copyToClipboard('${computerName.replace(/'/g, "\\'")}', '${computerName.replace(/'/g, "\\'")}')" title="Нажмите чтобы скопировать имя">
                             <div class="computer-name">
                                 <i class="fas fa-laptop-code"></i> ${computerName}
                             </div>
-                        </td>
+                        </span>
                         <td>
                             <span class="computer-id" onclick="event.stopPropagation(); connectRustDesk('${computerId}', '${computerName.replace(/'/g, "\\'")}')" title="Нажмите для подключения через RustDesk">
                                 ${computerId} <i class="fas fa-external-link-alt"></i>
                             </span>
-                        </td>
-                        <td><i class="fas fa-user"></i> ${escapeHtml(computer.username || 'Unknown')}</td>
-                        <td><i class="fas fa-network-wired"></i> ${escapeHtml(computer.ip || 'N/A')}</td>
+                        </span>
+                        <td><i class="fas fa-user"></i> ${escapeHtml(computer.username || 'Unknown')}</span>
+                        <td><i class="fas fa-network-wired"></i> ${escapeHtml(computer.ip || 'N/A')}</span>
                         <td>
                             <div class="${online ? 'status-online' : 'status-offline'}">
                                 <i class="fas fa-circle"></i> ${online ? 'АКТИВНО' : 'ОФФЛАЙН'}
                             </div>
-                        </td>
-                        <td><i class="far fa-clock"></i> ${formatDate(computer.last_online)}</td>
-                    </tr>
+                        </span>
+                        <td><i class="far fa-clock"></i> ${formatDate(computer.last_online)}</span>
+                    </span>
                 `;
             }).join('');
         }
 
-        function escapeHtml(str) {
-            if (!str) return '';
-            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-        }
-
+        // ========== ЗАГРУЗКА ДАННЫХ ==========
+        
         async function loadComputers() {
             try {
                 const response = await fetch(`${API_URL}/api/computers`);
                 if (!response.ok) throw new Error('Ошибка загрузки');
                 allComputers = await response.json();
-                // После загрузки применяем текущий поиск
-                filterComputers();
                 currentPage = 1;
                 updateDisplay();
             } catch (error) {
@@ -375,6 +459,8 @@
             }
         }
 
+        // ========== ПАГИНАЦИЯ ==========
+        
         function prevPage() { 
             if (currentPage > 1) { 
                 currentPage--; 
@@ -383,26 +469,29 @@
         }
         
         function nextPage() {
-            const totalPages = Math.ceil(filteredComputers.length / itemsPerPage);
+            const searchTerm = document.getElementById('searchInput').value;
+            const filtered = searchTerm ? filterComputers() : [];
+            const totalPages = Math.ceil(filtered.length / itemsPerPage);
             if (currentPage < totalPages) { 
                 currentPage++; 
                 updateDisplay(); 
             }
         }
 
-        // Обработчики событий - при изменении поиска сбрасываем страницу на 1
+        // ========== ОБРАБОТЧИКИ СОБЫТИЙ ==========
+        
         document.getElementById('searchInput').addEventListener('input', () => {
-            filterComputers();
             currentPage = 1;
             updateDisplay();
         });
         
         document.getElementById('searchType').addEventListener('change', () => {
-            filterComputers();
             currentPage = 1;
             updateDisplay();
         });
 
+        // ========== ИНИЦИАЛИЗАЦИЯ ==========
+        
         if (autoRefreshInterval) clearInterval(autoRefreshInterval);
         autoRefreshInterval = setInterval(loadComputers, 15000);
 

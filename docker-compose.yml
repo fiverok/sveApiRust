@@ -11,7 +11,7 @@ services:
       - ./data:/data
       - ./static:/app/static
     environment:
-      - TZ=Europe/Moscow
+      - TZ=Europe/Moscow      
     logging:
       driver: "json-file"
       options:

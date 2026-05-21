@@ -1,4 +1,4 @@
-from flask import Flask, send_from_directory, session, redirect, url_for
+from flask import Flask, send_from_directory, session, redirect, url_for, jsonify
 from datetime import datetime
 import os
 import logging
@@ -6,7 +6,7 @@ from logging.handlers import RotatingFileHandler
 
 from modules import (
     init_db, init_auth_routes, init_computers_routes, init_public_routes,
-    get_user_by_username, hash_password, execute_query
+    get_user_by_username, hash_password, execute_query, add_audit_log
 )
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
@@ -73,7 +73,14 @@ def serve_static(filename):
     return send_from_directory('static', filename)
 
 @app.route('/logout')
-def logout():
+def web_logout():
+    """Веб-выход из системы"""
+    user_id = session.get('user_id')
+    username = session.get('username', 'Unknown')
+    
+    if user_id:
+        add_audit_log(user_id, 'LOGOUT', username, 'Web logout', request.remote_addr)
+    
     session.clear()
     return redirect(url_for('login_page'))
 
@@ -101,7 +108,7 @@ if __name__ == '__main__':
         error_logger.info("Created default admin user: admin / admin")
     
     print("=" * 60)
-    print("🚀 RustDesk Monitor Server v5.0 (Fully Modular)")
+    print("🚀 RustDesk Monitor Server v5.0 (Modular)")
     print("=" * 60)
     print(f"📁 Database: /data/computers.db")
     print(f"🌐 Web UI: http://0.0.0.0:21114")
@@ -113,6 +120,8 @@ if __name__ == '__main__':
     print("   - modules/api_auth.py     - API аутентификации")
     print("   - modules/api_computers.py - API компьютеров")
     print("   - modules/api_public.py   - публичные API")
+    print("=" * 60)
+    print("🕐 Session timeout: 2 hours of inactivity")
     print("=" * 60)
     
     app.run(host='0.0.0.0', port=21114, debug=False, threaded=True)
